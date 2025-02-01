@@ -4,11 +4,23 @@ const ray = @cImport({
 });
 const tetromino = @import("tetromino");
 
-const squareSize = 50;
+const GameSettings = struct {
+    square_size: usize,
+    screen_width: usize,
+    screen_height: usize,
+    grid_width: usize,
+    grid_height: usize,
+    grid_color: ray.Color,
+    level_increase_lines: usize,
+};
+
+const Score = struct {
+    total: usize,
+};
 
 const InputState = struct {
     move_delay: f32 = 0.10,  // Delay between movements when key is held (in seconds)
-    move_timer: f32 = 0.15,   // Timer for movement delay
+    move_timer: f32 = 0.05,   // Timer for movement delay
 
     // Reset timer
     pub fn reset_timer(self: *InputState) void {
@@ -26,7 +38,7 @@ const InputState = struct {
     }
 };
 
-pub fn are_colors_equal(a: ray.Color, b: ray.Color) bool {
+pub fn areColorsEqual(a: ray.Color, b: ray.Color) bool {
     return a.r == b.r and
            a.g == b.g and
            a.b == b.b and
@@ -55,6 +67,7 @@ const Board = struct {
         ray.DrawRectangle(start_x + border + width, start_y, border, border + height, self.border_color);
     }
 };
+
 pub const Grid = struct {
     cells: [][]tetromino.GridCell,
     width: usize,
@@ -118,7 +131,7 @@ pub const Grid = struct {
 
     fn isEmpty(self: *Grid, x: i32, y: i32) bool {
         if (self.getCell(x, y)) |cell| {
-            return are_colors_equal(cell.color, self.background_color);
+            return areColorsEqual(cell.color, self.background_color);
         }
         return false;
     }
@@ -132,30 +145,13 @@ pub const Grid = struct {
         }
     }
 
-    fn readyToStop(self: *Grid, cells: []const tetromino.GridCell) bool {
-        for (cells) |cell| {
-            if (!self.isInBounds(cell.position.x, cell.position.y + 1)) {
-                return true;
-            }
-            if (!self.isEmpty(cell.position.x, cell.position.y + 1)) {
-                return true;
-            }
-        }
-        return false;
-    }
+    pub fn addPiece(self: *Grid, piece: *const tetromino.Tetromino, allocator: std.mem.Allocator) !void {
+        const cells = try piece.getGridCells(allocator);
+        defer allocator.free(cells);
 
-    fn draw(self: *Grid, start: tetromino.Position) void {
-        for (self.cells) |row| {
-            drawCells(start, row);
-        }
-    }
-
-    fn append(self: *Grid, cells: []const tetromino.GridCell) void {
         for (cells) |cell| {
-            if (self.getCell(cell.position.x, cell.position.y + 1)) |gridCell| {
+            if (self.getCell(cell.position.x, cell.position.y)) |gridCell| {
                 gridCell.*.color = cell.color;
-            } else {
-                continue;
             }
         }
     }
@@ -169,25 +165,77 @@ pub const Grid = struct {
         return true;
     }
 
-    //fn removeLines(self: *Grid) void {
-//
-    //}
-};
-
-fn drawCells(start: tetromino.Position, cells: []const tetromino.GridCell) void {
-    for (cells) |cell| {
-        ray.DrawRectangle((start.x + cell.position.x) * squareSize, (start.y + cell.position.y) * squareSize, squareSize, squareSize, cell.color);
+    fn hasSpaceForPiece(self: *Grid, piece: *const tetromino.Tetromino, allocator: std.mem.Allocator) !bool {
+        const cells = try piece.getGridCells(allocator);
+        defer allocator.free(cells);
+        return self.hasSpace(cells);
     }
-}
+
+    fn isLineComplete(self: *Grid, y: usize) bool {
+        for (0..self.width) |x| {
+            if (self.isEmpty(@intCast(x), @intCast(y))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Move all lines above the given line down by one
+    fn shiftLinesDown(self: *Grid, from_y: usize) void {
+        var y = from_y;
+        while (y > 0) {
+            for (0..self.width) |x| {
+                self.cells[y][x].color = self.cells[y-1][x].color;
+            }
+            y -= 1;
+        }
+
+        // Clear the top line
+        for (0..self.width) |x| {
+            self.cells[0][x].color = self.background_color;
+        }
+    }
+
+    pub fn removeCompletedLines(self: *Grid) usize {
+        var lines_cleared: usize = 0;
+        var y: usize = 0;
+
+        while (y < self.height) {
+            if (self.isLineComplete(y)) {
+                self.shiftLinesDown(y);
+                lines_cleared += 1;
+                // Don't increment y, check the same line again
+                // as new line has shifted down
+            } else {
+                y += 1;
+            }
+        }
+        return lines_cleared;
+    }
+
+    pub fn findDropPosition(self: *Grid, piece: *const tetromino.Tetromino, allocator: std.mem.Allocator) !tetromino.Tetromino {
+        var test_piece = piece.*;
+        var last_valid = piece.*;
+
+        while (try self.hasSpaceForPiece(&test_piece, allocator)) {
+            last_valid = test_piece;
+            test_piece.position.y += 1;
+        }
+
+        return last_valid;
+    }
+};
 
 const MovementResult = struct {
     piece: tetromino.Tetromino,
     moved: bool,
+    dropped: bool,
 };
 
-pub fn handle_input(piece: *tetromino.Tetromino, input_state: *InputState) MovementResult {
+pub fn handleInput(piece: *tetromino.Tetromino, input_state: *InputState) MovementResult {
     var temp_piece = piece.*;
     var moved = false;
+    var dropped = false;
 
     // Handle initial key presses immediately
     if (ray.IsKeyPressed(ray.KEY_LEFT)) {
@@ -224,8 +272,7 @@ pub fn handle_input(piece: *tetromino.Tetromino, input_state: *InputState) Movem
 
     // Quick drop with either continuous drop or instant drop
     if (ray.IsKeyPressed(ray.KEY_SPACE)) {
-        temp_piece.position.y += 1;  // You might want to implement instant drop here
-        moved = true;
+        dropped = true;
     } else if (ray.IsKeyDown(ray.KEY_DOWN) and input_state.can_move()) {
         temp_piece.position.y += 1;
         moved = true;
@@ -234,184 +281,190 @@ pub fn handle_input(piece: *tetromino.Tetromino, input_state: *InputState) Movem
     return .{
         .piece = temp_piece,
         .moved = moved,
+        .dropped = dropped,
     };
 }
 
-const FallingState = struct {
-    fall_delay: f32,      // Delay between falls (in seconds)
-    fall_timer: f32,      // Current time until next fall
+const GameSpeed = struct {
+    // Classic NES speeds converted to seconds (frames / 60)
+    const speeds = [30]f32{
+        0.800,  // Level 0:  48 frames
+        0.717,  // Level 1:  43 frames
+        0.633,  // Level 2:  38 frames
+        0.550,  // Level 3:  33 frames
+        0.467,  // Level 4:  28 frames
+        0.383,  // Level 5:  23 frames
+        0.300,  // Level 6:  18 frames
+        0.217,  // Level 7:  13 frames
+        0.133,  // Level 8:   8 frames
+        0.100,  // Level 9:   6 frames
+        0.083,  // Level 10:  5 frames
+        0.083,  // Level 11:  5 frames
+        0.083,  // Level 12:  5 frames
+        0.067,  // Level 13:  4 frames
+        0.067,  // Level 14:  4 frames
+        0.067,  // Level 15:  4 frames
+        0.050,  // Level 16:  3 frames
+        0.050,  // Level 17:  3 frames
+        0.050,  // Level 18:  3 frames
+        0.033,  // Level 19:  2 frames
+        0.033,  // Level 20:  2 frames
+        0.033,  // Level 21:  2 frames
+        0.033,  // Level 22:  2 frames
+        0.033,  // Level 23:  2 frames
+        0.033,  // Level 24:  2 frames
+        0.033,  // Level 25:  2 frames
+        0.033,  // Level 26:  2 frames
+        0.033,  // Level 27:  2 frames
+        0.033,  // Level 28:  2 frames
+        0.017,  // Level 29:  1 frame
+    };
 
-    pub fn init(initial_delay: f32) FallingState {
+    pub fn get_fall_delay(level: usize) f32 {
+        if (level >= speeds.len) {
+            return speeds[speeds.len - 1];
+        }
+        return speeds[level];
+    }
+};
+
+const FallingState = struct {
+    fall_timer: f32,
+    level: usize,
+
+    pub fn init(initial_level: usize) FallingState {
         return .{
-            .fall_delay = initial_delay,
-            .fall_timer = initial_delay,
+            .fall_timer = GameSpeed.get_fall_delay(initial_level),
+            .level = initial_level,
         };
     }
 
     pub fn update(self: *FallingState) bool {
         self.fall_timer -= ray.GetFrameTime();
         if (self.fall_timer <= 0) {
-            self.fall_timer = self.fall_delay;
+            self.fall_timer = GameSpeed.get_fall_delay(self.level);
             return true;  // Time to fall
         }
         return false;
     }
 
-    // Could add methods to adjust speed based on level/score
-    pub fn increase_speed(self: *FallingState, factor: f32) void {
-        self.fall_delay *= factor;
+    pub fn setLevel(self: *FallingState, new_level: usize) void {
+        self.level = new_level;
+        self.fall_timer = GameSpeed.get_fall_delay(self.level);
     }
 };
 
-
-// Example usage in game loop:
-pub fn game_loop(grid: *Grid, input_piece: *tetromino.Tetromino) !void {
-    var piece = input_piece.*;
+pub fn gameLoop(settings: *const GameSettings, grid: *Grid, allocator: std.mem.Allocator) !void {
+    var prng = std.rand.DefaultPrng.init(@intCast(std.time.timestamp()));
+    var rand = prng.random();
+    const tetromino_spawn_pos = tetromino.Position{ .x = @divFloor(@as(i32, @intCast(grid.width)), 2), .y = 0 };
     var input_state = InputState{};
-    const allocator = std.heap.page_allocator;
-    var falling = FallingState.init(1.0);
+    var falling = FallingState.init(0);
+    var piece = tetromino.Tetromino.initRandom(&rand, tetromino_spawn_pos);
+    var game_over = false;
+    const square_size = @as(i32, @intCast(settings.square_size));
+    var score = Score { .total = 0 };
 
     while (!ray.WindowShouldClose()) {
+        if (!game_over) {
+            // handle input
+            const result = handleInput(&piece, &input_state);
+            if (result.dropped) {
+                piece = try grid.findDropPosition(&result.piece, allocator);
+            } else if (result.moved) {
+                if (try grid.hasSpaceForPiece(&result.piece, allocator)) {
+                    piece = result.piece;
+                }
+            }
 
-        // Handle input
-        const result = handle_input(&piece, &input_state);
-        if (result.moved) {
-            const cells = try result.piece.getGridCells(allocator);
-            defer allocator.free(cells);
-            if (grid.hasSpace(cells)) {
-                std.debug.print("moved!\n", .{});
-
-                piece = result.piece;
+            // handle falling
+            if (falling.update()) {
+                var fall_piece = piece;
+                fall_piece.position.y += 1;
+                if (try grid.hasSpaceForPiece(&fall_piece, allocator)) {
+                    piece = fall_piece;
+                } else {
+                    try grid.addPiece(&piece, allocator);
+                    const removed = grid.removeCompletedLines();
+                    score.total += removed;
+                    falling.setLevel(score.total / settings.level_increase_lines);
+                    piece = tetromino.Tetromino.initRandom(&rand, tetromino_spawn_pos);
+                }
             }
         }
 
-        if (falling.update()) {
-            var fall_piece = piece;
-            fall_piece.position.y += 1;
-            const cells = try result.piece.getGridCells(allocator);
-            defer allocator.free(cells);
-            if (grid.hasSpace(cells)) {
-                piece = fall_piece;
-            } else {
-                grid.append(cells);
-                //grid.removeCompletedLines();
-                     // 3. Spawn new piece
-           }
-        }
-
         // render part
-        const cells = try piece.getGridCells(allocator);
-        defer allocator.free(cells);
-        // Begin drawing
         ray.BeginDrawing();
         defer ray.EndDrawing();
-
-        ray.ClearBackground(ray.BLACK);
-
+        const cells = try piece.getGridCells(allocator);
+        defer allocator.free(cells);
+        if (!grid.hasSpace(cells)) {
+            // FIXME
+            ray.DrawText("Game Over!", @intCast(grid.width/2 * settings.square_size), @intCast(grid.height/2 * settings.square_size), square_size, ray.PINK);
+            game_over = true;
+            continue;
+        }
+        ray.ClearBackground(ray.WHITE);
         // Draw grid
+        ray.DrawRectangle(0, 0, @intCast(grid.width * settings.square_size), @intCast(grid.height * settings.square_size), ray.BLACK);
         for (grid.cells) |row| {
             for (row) |cell| {
                 ray.DrawRectangle(
-                    @intCast(cell.position.x * 50), // scale factor of 30
-                    @intCast(cell.position.y * 50),
-                    49, // slightly smaller than scale for grid effect
-                    49,
+                    cell.position.x * square_size,
+                    cell.position.y * square_size,
+                    square_size - 1, // slightly smaller than scale for grid effect
+                    square_size - 1,
                     cell.color,
                 );
             }
         }
 
+
         // Draw current piece
         for (cells) |cell| {
             ray.DrawRectangle(
-                @intCast(cell.position.x * 50),
-                @intCast(cell.position.y * 50),
-                49,
-                49,
+                cell.position.x * square_size,
+                cell.position.y * square_size,
+                square_size - 1,
+                square_size - 1,
                 tetromino.getTetrominoColor(piece.tetromino_type),
             );
         }
+        const score_string = try std.fmt.allocPrintZ(
+            allocator, "Score: {d}", .{ score.total },
+        );
+        defer allocator.free(score_string);
+        ray.DrawText(score_string, @intCast((grid.width + 1) * settings.square_size), 0, square_size, ray.DARKGRAY);
+        const level_string = try std.fmt.allocPrintZ(
+            allocator, "Level: {d}", .{ falling.level },
+        );
+        defer allocator.free(level_string);
+        ray.DrawText(level_string, @intCast((grid.width + 1) * settings.square_size), square_size, square_size, ray.DARKGRAY);
     }
 }
 
 pub fn main() !void {
-    var prng = std.rand.DefaultPrng.init(@intCast(std.time.timestamp()));
-    var rand = prng.random();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-
-    const screen_width = 800;
-    const screen_height = 1200;
-    const grid_width = 10;
-    const grid_height = 20;
-    // create all figures
-    ray.InitWindow(screen_width, screen_height, "tetris");
-    defer ray.CloseWindow();
-
-    ray.SetTargetFPS(60);
-    const board_position = tetromino.Position{ .x = 1, .y = 1 };
-    const board = Board {
-        .width = grid_width,
-        .height = grid_height,
-        .unit_size = 50,
-        .border_width = 1,
-        .background_color = ray.DARKBLUE,
-        .border_color = ray.BLUE,
-    };
-    const tetromino_spawn_pos = tetromino.Position{ .x = board.width/2, .y = 0 };
-
-    var active_tetromino: tetromino.Tetromino = undefined;
-    var active = false;
-    var game_over = false;
-    const grid_position = tetromino.Position{ .x = board_position.x + board.border_width, .y = board_position.y };
-    var grid = try Grid.init(gpa.allocator(), grid_width, grid_height, ray.DARKBLUE);
-    defer grid.deinit();
-    // state of points
-    active_tetromino = tetromino.Tetromino.initRandom(&rand, tetromino_spawn_pos);
-    try game_loop(&grid, &active_tetromino);
-    while (!ray.WindowShouldClose()) {
-        ray.BeginDrawing();
-        defer ray.EndDrawing();
-
-        ray.ClearBackground(ray.RAYWHITE);
-        board.draw(board_position);
-        grid.draw(grid_position);
-
-        if (game_over) {
-            ray.DrawText("Game Over!", (board_position.x + board.border_width)*squareSize, 0, squareSize, ray.RED);
-            continue;
-        }
-        // Rotate it
-        //piece.rotate_clockwise();
-
-        // draw state points
-        if (active) {
-            const allocator = gpa.allocator();
-            const cells = try active_tetromino.getGridCells(allocator);
-            defer allocator.free(cells);
-
-            drawCells(grid_position, cells);
-            if (grid.readyToStop(cells)) {
-                active = false;
-                grid.append(cells);
-       //         state.removeLines();
-            } else {
-                active_tetromino.position.y += 1;
-                std.debug.print("INC!", .{});
-            }
-        } else {
-            active_tetromino = tetromino.Tetromino.initRandom(&rand, tetromino_spawn_pos);
-            std.debug.print("INIT!", .{});
-            const allocator = gpa.allocator();
-            const cells = try active_tetromino.getGridCells(allocator);
-            defer allocator.free(cells);
-
-            // no space - game over!
-            if (!grid.hasSpace(cells)) {
-                game_over = true;
-                continue;
-            }
-            active = true;
-        }
+    const allocator = gpa.allocator();
+    defer {
+        std.debug.assert(gpa.deinit() == .ok);
     }
+    const settings = GameSettings{
+        .square_size = 50,
+        .screen_width = 800,
+        .screen_height = 1200,
+        .grid_width = 10,
+        .grid_height = 20,
+        .grid_color = ray.SKYBLUE,
+        .level_increase_lines = 10,
+    };
+
+    ray.InitWindow(settings.screen_width, settings.screen_height, "tetris");
+    defer ray.CloseWindow();
+    ray.SetTargetFPS(60);
+
+    var grid = try Grid.init(allocator, settings.grid_width, settings.grid_height, settings.grid_color);
+    defer grid.deinit();
+
+    try gameLoop(&settings, &grid, allocator);
 }

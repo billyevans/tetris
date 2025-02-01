@@ -52,8 +52,8 @@ const i_positions = [_]Position{
 const o_positions = [_]Position{
     .{ .x = -1, .y = 0 },  // ██
     .{ .x = 0, .y = 0 },   // ██
-    .{ .x = -1, .y = -1 },
-    .{ .x = 0, .y = -1 },
+    .{ .x = -1, .y = 1 },
+    .{ .x = 0, .y = 1 },
 };
 
 const t_positions = [_]Position{
@@ -153,7 +153,7 @@ pub const Tetromino = struct {
         return init(TetrominoType.random(rand), position);
     }
 
-    pub fn getGridCells(self: Tetromino, allocator: std.mem.Allocator) ![]GridCell {
+    pub fn getGridCells(self: *const Tetromino, allocator: std.mem.Allocator) ![]GridCell {
         const shape = tetromino_shapes[@intFromEnum(self.tetromino_type)];
         const color = getTetrominoColor(self.tetromino_type);
 
@@ -177,10 +177,14 @@ pub const Tetromino = struct {
     }
 
     pub fn rotateClockwise(self: *Tetromino) void {
+        if (self.tetromino_type == .o) return;
+
         self.rotation = self.rotation.next();
     }
 
     pub fn rotateCounterclockwise(self: *Tetromino) void {
+        if (self.tetromino_type == .o) return;
+
         self.rotation = self.rotation.previous();
     }
 };
