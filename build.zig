@@ -28,8 +28,16 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     tetromino_module.linkSystemLibrary("raylib", .{});
+    const game_state_module = b.addModule("game_state", .{
+        .root_source_file = b.path("src/game_state.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    game_state_module.linkSystemLibrary("raylib", .{});
+    game_state_module.addImport("tetromino", tetromino_module);
 
     exe.root_module.addImport("tetromino", tetromino_module);
+    exe.root_module.addImport("game_state", game_state_module);
     exe.linkSystemLibrary("raylib");
     exe.linkLibC();
 
@@ -61,17 +69,15 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
+    const main_tests = b.addTest(.{
+        .root_source_file = b.path("src/game_state_test.zig" ),
         .target = target,
         .optimize = optimize,
     });
-
-    const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
-
-    // Similar to creating the run step earlier, this exposes a `test` step to
-    // the `zig build --help` menu, providing a way for the user to request
-    // running the unit tests.
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_exe_unit_tests.step);
+    main_tests.root_module.addImport("tetromino", tetromino_module);
+    main_tests.root_module.addImport("game_state", game_state_module);
+    main_tests.linkSystemLibrary("raylib");
+    const test_step = b.step("test", "Run library tests");
+    const run_tests = b.addRunArtifact(main_tests);
+    test_step.dependOn(&run_tests.step);
 }

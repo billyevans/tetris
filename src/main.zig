@@ -3,21 +3,77 @@ const ray = @cImport({
     @cInclude("raylib.h");
 });
 const tetromino = @import("tetromino");
+const gs = @import("game_state");
 
-const GameSettings = struct {
-    square_size: usize,
-    screen_width: usize,
-    screen_height: usize,
-    grid_width: usize,
-    grid_height: usize,
-    grid_color: ray.Color,
-    preview_grid_color: ray.Color,
-    level_increase_lines: usize,
-    sounds_on: bool,
-};
+const Layout = struct {
+    window_width: f32,
+    window_height: f32,
+    margin: f32,
+    block_size: f32,
+    grid_width: f32,
+    grid_height: f32,
+    preview_size: f32,
 
-const Score = struct {
-    total: usize,
+    // Get tetris main grid position and size
+    pub fn getMainGridBounds(self: *const Layout) ray.Rectangle {
+        return ray.Rectangle{
+            .x = self.margin,
+            .y = self.margin,
+            .width = self.block_size * self.grid_width,
+            .height = self.block_size * self.grid_height,
+        };
+    }
+
+    // Get sidebar position (right side of main grid)
+    pub fn getSidebarX(self: *const Layout) f32 {
+        const grid = self.getMainGridBounds();
+        return grid.x + grid.width + self.margin;
+    }
+
+    pub fn getPreviewBounds(self: *const Layout) ray.Rectangle {
+        const sidebar_x = self.getSidebarX();
+        const preview_size = self.block_size * self.preview_size;
+        return ray.Rectangle{
+            .x = sidebar_x,
+            .y = self.margin + 150, // Place below score/level text
+            .width = preview_size,
+            .height = preview_size,
+        };
+    }
+
+    pub fn getCheckboxBounds(self: *const Layout) ray.Rectangle {
+        const preview = self.getPreviewBounds();
+        return ray.Rectangle{
+            .x = preview.x,
+            .y = preview.y + preview.height + self.margin,
+            .width = 20,
+            .height = 20,
+        };
+    }
+
+    // Get score text position
+    pub fn getScorePosition(self: *const Layout) ray.Vector2 {
+        return ray.Vector2{
+            .x = self.getSidebarX(),
+            .y = self.margin,
+        };
+    }
+
+    // Get level text position
+    pub fn getLevelPosition(self: Layout) ray.Vector2 {
+        return ray.Vector2{
+            .x = self.getSidebarX(),
+            .y = self.margin + 50,
+        };
+    }
+
+    // Get lines text position
+    pub fn getLinesPosition(self: Layout) ray.Vector2 {
+        return ray.Vector2{
+            .x = self.getSidebarX(),
+            .y = self.margin + 100,
+        };
+    }
 };
 
 const InputState = struct {
@@ -40,187 +96,61 @@ const InputState = struct {
     }
 };
 
-pub fn areColorsEqual(a: *const ray.Color, b: *const ray.Color) bool {
-    return a.r == b.r and
-           a.g == b.g and
-           a.b == b.b and
-           a.a == b.a;
-}
-
-const Board = struct {
-    width :i32,
-    height: i32,
-    unit_size: i32,
-    border_width: i32,
-    border_color: ray.Color,
-    background_color: ray.Color,
-
-    fn draw(self: *const Board, start: tetromino.Position) void {
-        const height = self.height * self.unit_size;
-        const width = self.width * self.unit_size;
-        const start_x = start.x * self.unit_size;
-        const start_y = start.y * self.unit_size;
-        const border = self.border_width * self.unit_size;
-
-        ray.DrawRectangle(start_x + border, start_y, width, height, self.background_color);
-        // border
-        ray.DrawRectangle(start_x, border, start_y, border + height, self.border_color);
-        ray.DrawRectangle(start_x + border, start_y + height, width, border, self.border_color);
-        ray.DrawRectangle(start_x + border + width, start_y, border, border + height, self.border_color);
-    }
+const GameInput = struct {
+    horizontal: InputState,
+    vertical: InputState,
 };
 
-pub const Grid = struct {
-    cells: [][]ray.Color,
-    position: tetromino.Position,
-    width: usize,
-    height: usize,
-    allocator: std.mem.Allocator,
-    background_color: ray.Color,
+const Checkbox = struct {
+    bounds: ray.Rectangle,
+    checked: bool,
+    text: [:0]const u8,
 
-    pub fn init(allocator: std.mem.Allocator, position: tetromino.Position, width: usize, height: usize, background_color: ray.Color) !Grid {
-        // Allocate the rows
-        var cells = try allocator.alloc([]ray.Color, height);
-        errdefer allocator.free(cells);
-
-        // Allocate each row
-        for (cells, 0..) |*row, y| {
-            row.* = try allocator.alloc(ray.Color, width);
-            errdefer {
-                // Free previously allocated rows if we fail
-                for (cells[0..y]) |prev_row| {
-                    allocator.free(prev_row);
-                }
-            }
-
-            // Initialize each cell in the row
-            for (row.*) |*cell| {
-                cell.* = background_color;
-            }
-        }
-
-        return Grid{
-            .cells = cells,
-            .position = position,
-            .width = width,
-            .height = height,
-            .allocator = allocator,
-            .background_color = background_color,
+    pub fn init(x: f32, y: f32, width: f32, height: f32, text: [:0]const u8) Checkbox {
+        return Checkbox{
+            .bounds = ray.Rectangle{
+                .x = x,
+                .y = y,
+                .width = width,
+                .height = height,
+            },
+            .checked = true, // Start with sound on
+            .text = text,
         };
     }
 
-    pub fn deinit(self: *Grid) void {
-        for (self.cells) |row| {
-            self.allocator.free(row);
+    pub fn draw(self: *Checkbox) void {
+        // Draw the checkbox outline
+        ray.DrawRectangleLinesEx(self.bounds, 2, ray.BLACK);
+
+        // Draw the filled part if checked
+        if (self.checked) {
+            const inner_bounds = ray.Rectangle{
+                .x = self.bounds.x + 4,
+                .y = self.bounds.y + 4,
+                .width = self.bounds.width - 8,
+                .height = self.bounds.height - 8,
+            };
+            ray.DrawRectangleRec(inner_bounds, ray.BLACK);
         }
-        self.allocator.free(self.cells);
+
+        // Draw the text label
+        ray.DrawText(
+            self.text.ptr,
+            @intFromFloat(self.bounds.x + self.bounds.width + 10),
+            @intFromFloat(self.bounds.y + 5),
+            20,
+            ray.BLACK,
+        );
     }
 
-    // Helper method to check if a position is in bounds
-    fn isInBounds(self: *Grid, x: i32, y: i32) bool {
-        return x >= 0 and x < self.width and y >= 0 and y < self.height;
-    }
-
-    // Helper to get a cell safely (returns null if out of bounds)
-    fn getCell(self: *Grid, x: i32, y: i32) ?*ray.Color {
-        if (!self.isInBounds(x, y)) return null;
-        return &self.cells[@intCast(y)][@intCast(x)];
-    }
-
-    fn isEmpty(self: *Grid, x: i32, y: i32) bool {
-        if (self.getCell(x, y)) |cell| {
-            return areColorsEqual(cell, &self.background_color);
-        }
-        return false;
-    }
-
-    // Clear the grid (set all cells to default color)
-    fn clear(self: *Grid) void {
-        for (self.cells) |row| {
-            for (row) |*cell| {
-                cell.*.color = self.background_color;
+    pub fn update(self: *Checkbox) void {
+        if (ray.IsMouseButtonPressed(ray.MOUSE_BUTTON_LEFT)) {
+            const mouse_point = ray.GetMousePosition();
+            if (ray.CheckCollisionPointRec(mouse_point, self.bounds)) {
+                self.checked = !self.checked;
             }
         }
-    }
-
-    pub fn addPiece(self: *Grid, piece: *const tetromino.Tetromino, allocator: std.mem.Allocator) !void {
-        const cells = try piece.getGridCells(allocator);
-        defer allocator.free(cells);
-
-        for (cells) |cell| {
-            if (self.getCell(cell.position.x, cell.position.y)) |gridCell| {
-                gridCell.* = cell.color;
-            }
-        }
-    }
-
-    fn hasSpace(self: *Grid, cells: []const tetromino.GridCell) bool {
-        for (cells) |cell| {
-            if (!self.isEmpty(cell.position.x, cell.position.y)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    fn hasSpaceForPiece(self: *Grid, piece: *const tetromino.Tetromino, allocator: std.mem.Allocator) !bool {
-        const cells = try piece.getGridCells(allocator);
-        defer allocator.free(cells);
-        return self.hasSpace(cells);
-    }
-
-    fn isLineComplete(self: *Grid, y: usize) bool {
-        for (0..self.width) |x| {
-            if (self.isEmpty(@intCast(x), @intCast(y))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // Move all lines above the given line down by one
-    fn shiftLinesDown(self: *Grid, from_y: usize) void {
-        var y = from_y;
-        while (y > 0) {
-            for (0..self.width) |x| {
-                self.cells[y][x] = self.cells[y-1][x];
-            }
-            y -= 1;
-        }
-
-        // Clear the top line
-        for (0..self.width) |x| {
-            self.cells[0][x] = self.background_color;
-        }
-    }
-
-    pub fn removeCompletedLines(self: *Grid) usize {
-        var lines_cleared: usize = 0;
-        var y: usize = 0;
-
-        while (y < self.height) {
-            if (self.isLineComplete(y)) {
-                self.shiftLinesDown(y);
-                lines_cleared += 1;
-                // Don't increment y, check the same line again
-                // as new line has shifted down
-            } else {
-                y += 1;
-            }
-        }
-        return lines_cleared;
-    }
-
-    pub fn findDropPosition(self: *Grid, piece: *const tetromino.Tetromino, allocator: std.mem.Allocator) !tetromino.Tetromino {
-        var test_piece = piece.*;
-        var last_valid = piece.*;
-
-        while (try self.hasSpaceForPiece(&test_piece, allocator)) {
-            last_valid = test_piece;
-            test_piece.position.y += 1;
-        }
-
-        return last_valid;
     }
 };
 
@@ -231,7 +161,7 @@ const MovementResult = struct {
     paused: bool,
 };
 
-pub fn handleInput(piece: *tetromino.Tetromino, input_state: *InputState) MovementResult {
+pub fn handleInput(piece: *tetromino.Tetromino, game_input: *GameInput) MovementResult {
     var temp_piece = piece.*;
     var moved = false;
     var dropped = false;
@@ -240,16 +170,16 @@ pub fn handleInput(piece: *tetromino.Tetromino, input_state: *InputState) Moveme
     // Handle initial key presses immediately
     if (ray.IsKeyPressed(ray.KEY_LEFT)) {
         temp_piece.position.x -= 1;
-        input_state.reset_timer();
+        game_input.horizontal.reset_timer();
         moved = true;
     } else if (ray.IsKeyPressed(ray.KEY_RIGHT)) {
         temp_piece.position.x += 1;
-        input_state.reset_timer();
+        game_input.horizontal.reset_timer();
         moved = true;
     }
 
     // Handle held keys with delay
-    if (!moved and input_state.can_move()) {
+    if (!moved and game_input.horizontal.can_move()) {
         if (ray.IsKeyDown(ray.KEY_LEFT)) {
             temp_piece.position.x -= 1;
             moved = true;
@@ -273,7 +203,7 @@ pub fn handleInput(piece: *tetromino.Tetromino, input_state: *InputState) Moveme
     // Quick drop with either continuous drop or instant drop
     if (ray.IsKeyPressed(ray.KEY_SPACE)) {
         dropped = true;
-    } else if (ray.IsKeyDown(ray.KEY_DOWN) and input_state.can_move()) {
+    } else if (ray.IsKeyDown(ray.KEY_DOWN) and game_input.vertical.can_move()) {
         temp_piece.position.y += 1;
         moved = true;
     }
@@ -290,152 +220,109 @@ pub fn handleInput(piece: *tetromino.Tetromino, input_state: *InputState) Moveme
     };
 }
 
-const GameSpeed = struct {
-    // Classic NES speeds converted to seconds (frames / 60)
-    const speeds = [30]f32{
-        0.800,  // Level 0:  48 frames
-        0.717,  // Level 1:  43 frames
-        0.633,  // Level 2:  38 frames
-        0.550,  // Level 3:  33 frames
-        0.467,  // Level 4:  28 frames
-        0.383,  // Level 5:  23 frames
-        0.300,  // Level 6:  18 frames
-        0.217,  // Level 7:  13 frames
-        0.133,  // Level 8:   8 frames
-        0.100,  // Level 9:   6 frames
-        0.083,  // Level 10:  5 frames
-        0.083,  // Level 11:  5 frames
-        0.083,  // Level 12:  5 frames
-        0.067,  // Level 13:  4 frames
-        0.067,  // Level 14:  4 frames
-        0.067,  // Level 15:  4 frames
-        0.050,  // Level 16:  3 frames
-        0.050,  // Level 17:  3 frames
-        0.050,  // Level 18:  3 frames
-        0.033,  // Level 19:  2 frames
-        0.033,  // Level 20:  2 frames
-        0.033,  // Level 21:  2 frames
-        0.033,  // Level 22:  2 frames
-        0.033,  // Level 23:  2 frames
-        0.033,  // Level 24:  2 frames
-        0.033,  // Level 25:  2 frames
-        0.033,  // Level 26:  2 frames
-        0.033,  // Level 27:  2 frames
-        0.033,  // Level 28:  2 frames
-        0.017,  // Level 29:  1 frame
-    };
-
-    pub fn get_fall_delay(level: usize) f32 {
-        if (level >= speeds.len) {
-            return speeds[speeds.len - 1];
-        }
-        return speeds[level];
-    }
-};
-
-const FallingState = struct {
-    fall_timer: f32,
-    level: usize,
-
-    pub fn init(initial_level: usize) FallingState {
-        return .{
-            .fall_timer = GameSpeed.get_fall_delay(initial_level),
-            .level = initial_level,
-        };
+pub fn drawText(game_state: *const gs.GameState, layout: *const Layout, text_size: i32, allocator: std.mem.Allocator) !void {
+    {
+        const score_pos = layout.getScorePosition();
+        const score_string = try std.fmt.allocPrintZ(
+            allocator, "Score: {d}", .{ game_state.score },
+        );
+        defer allocator.free(score_string);
+        ray.DrawText(score_string, @intFromFloat(score_pos.x), @intFromFloat(score_pos.y), text_size, ray.DARKGRAY);
     }
 
-    pub fn update(self: *FallingState) bool {
-        self.fall_timer -= ray.GetFrameTime();
-        if (self.fall_timer <= 0) {
-            self.fall_timer = GameSpeed.get_fall_delay(self.level);
-            return true;  // Time to fall
-        }
-        return false;
+    {
+        const lines_pos = layout.getLinesPosition();
+        const lines_string = try std.fmt.allocPrintZ(
+            allocator, "Lines: {d}", .{ game_state.lines_cleared },
+        );
+        defer allocator.free(lines_string);
+        ray.DrawText(lines_string, @intFromFloat(lines_pos.x), @intFromFloat(lines_pos.y), text_size, ray.DARKGRAY);
     }
 
-    pub fn setLevel(self: *FallingState, new_level: usize) void {
-        self.level = new_level;
-        self.fall_timer = GameSpeed.get_fall_delay(self.level);
+    {
+        const level_pos = layout.getLevelPosition();
+        const level_string = try std.fmt.allocPrintZ(
+            allocator, "Level: {d}", .{ game_state.level },
+        );
+        defer allocator.free(level_string);
+        ray.DrawText(level_string, @intFromFloat(level_pos.x), @intFromFloat(level_pos.y), text_size, ray.DARKGRAY);
     }
-};
-
-pub fn drawText(score: usize, level: usize, pos: tetromino.Position, square_size: i32, allocator: std.mem.Allocator) !void {
-    const score_string = try std.fmt.allocPrintZ(
-        allocator, "Score: {d}", .{ score },
-    );
-    defer allocator.free(score_string);
-    ray.DrawText(score_string, pos.x * square_size, pos.y * square_size, square_size, ray.DARKGRAY);
-    const level_string = try std.fmt.allocPrintZ(
-        allocator, "Level: {d}", .{ level },
-    );
-    defer allocator.free(level_string);
-    ray.DrawText(level_string, pos.x * square_size, (pos.y + 1) * square_size, square_size, ray.DARKGRAY);
 }
 
-pub fn drawPiece(piece: *const tetromino.Tetromino, pos: tetromino.Position, square_size: i32, allocator: std.mem.Allocator) !void {
+pub fn drawCell(origin_x: i32, origin_y: i32, x: i32, y: i32, block_size: i32, color: ray.Color) void {
+    ray.DrawRectangle(
+        origin_x + (x * block_size),
+        origin_y + (y * block_size),
+        block_size - 1,
+        block_size - 1,
+        color,
+    );
+}
+
+pub fn drawPiece(piece: *const tetromino.Tetromino, grid_bounds: ray.Rectangle, block_size: i32, allocator: std.mem.Allocator) !void {
     const cells = try piece.getGridCells(allocator);
     defer allocator.free(cells);
     for (cells) |cell| {
-        ray.DrawRectangle(
-            (cell.position.x + pos.x) * square_size,
-            (cell.position.y + pos.y) * square_size,
-            square_size - 1,
-            square_size - 1,
-            tetromino.getTetrominoColor(piece.tetromino_type),
-        );
+        drawCell(@intFromFloat(grid_bounds.x), @intFromFloat(grid_bounds.y), cell.position.x, cell.position.y, block_size, cell.color);
     }
 }
 
-pub fn drawGrid(grid: *const Grid, square_size: i32) void {
-    ray.DrawRectangle(
-        grid.position.x * square_size,
-        grid.position.y * square_size,
-        @as(i32, @intCast(grid.width)) * square_size,
-        @as(i32, @intCast(grid.height)) * square_size,
-        ray.BLACK);
+pub fn drawGrid(grid: *const gs.Grid, grid_bounds: ray.Rectangle, block_size: i32) void {
+    ray.DrawRectangleLinesEx(grid_bounds, 2, ray.BLACK);
+    ray.DrawRectangleRec(grid_bounds, ray.BLACK);
     for (0.., grid.cells) |y, row| {
         for (0.., row) |x, cell| {
-            ray.DrawRectangle(
-                (@as(i32, @intCast(x)) + grid.position.x) * square_size,
-                (@as(i32, @intCast(y)) + grid.position.y) * square_size,
-                square_size - 1,
-                square_size - 1,
-                cell,
-            );
+            drawCell(@intFromFloat(grid_bounds.x), @intFromFloat(grid_bounds.y), @intCast(x), @intCast(y), block_size, cell);
         }
     }
 }
 
-pub fn gameLoop(settings: *const GameSettings, grid: *Grid, previewGrid: *Grid, allocator: std.mem.Allocator) !void {
+pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, allocator: std.mem.Allocator) !void {
     var prng = std.rand.DefaultPrng.init(@intCast(std.time.timestamp()));
     var rand = prng.random();
     const spawn_pos = tetromino.Position{ .x = @divFloor(@as(i32, @intCast(grid.width)), 2), .y = 0 };
-    const next_spawn_pos = tetromino.Position{ .x = @divFloor(@as(i32, @intCast(previewGrid.width)), 2), .y = 2 };
-    var input_state = InputState{};
-    var falling = FallingState.init(0);
+    const next_spawn_pos = tetromino.Position{ .x = @divFloor(@as(i32, @intCast(previewGrid.width)), 2), .y = 1 };
+    var game_input = GameInput{
+        .horizontal = .{ .move_delay = 0.10 },
+        .vertical = .{ .move_delay = 0.05 },
+    };
+    var falling = gs.FallingState.init(0);
     var piece = tetromino.Tetromino.initRandom(&rand, spawn_pos);
     var nextPiece = tetromino.Tetromino.initRandom(&rand, next_spawn_pos);
     var game_over = false;
     var game_pause = false;
-    const square_size = @as(i32, @intCast(settings.square_size));
-    var score = Score { .total = 0 };
+    var game_state = gs.GameState.init();
     ray.InitAudioDevice();
     defer ray.CloseAudioDevice();
-    const sound = if (settings.sounds_on) ray.LoadSound("/Users/alexeypervushin/src/zig/tetris/philip.ogg") else undefined;
+    const sound = ray.LoadSound("/Users/alexeypervushin/src/zig/tetris/philip.ogg");
+    const block_size: i32 = @intFromFloat(layout.block_size);
+    var sound_checkbox = Checkbox.init(
+        layout.getCheckboxBounds().x,
+        layout.getCheckboxBounds().y,
+        20,
+        20,
+        "Sound On"
+    );
+    var sound_on = sound_checkbox.checked;
 
     while (!ray.WindowShouldClose()) {
         if (!game_over) {
             // handle input
-            const result = handleInput(&piece, &input_state);
+            const result = handleInput(&piece, &game_input);
             if (result.dropped) {
                 piece = try grid.findDropPosition(&result.piece, allocator);
-                if (settings.sounds_on) {
+                if (sound_on) {
                     ray.PlaySound(sound);
                 }
             } else if (result.moved) {
                 if (try grid.hasSpaceForPiece(&result.piece, allocator)) {
+                    const cells_moved = result.piece.position.y - piece.position.y;
                     piece = result.piece;
-                    if (settings.sounds_on) {
+
+                    if (cells_moved > 0) {
+                        game_state.addSoftDrop(@intCast(cells_moved));
+                    }
+                    if (sound_on) {
                         ray.PlaySound(sound);
                     }
                 }
@@ -452,8 +339,9 @@ pub fn gameLoop(settings: *const GameSettings, grid: *Grid, previewGrid: *Grid, 
                 } else {
                     try grid.addPiece(&piece, allocator);
                     const removed = grid.removeCompletedLines();
-                    score.total += removed;
-                    falling.setLevel(score.total / settings.level_increase_lines);
+                    game_state.clearLines(removed);
+                    falling.setLevel(game_state.level);
+
                     piece = nextPiece;
                     piece.position = spawn_pos;
                     nextPiece = tetromino.Tetromino.initRandom(&rand, next_spawn_pos);
@@ -461,26 +349,48 @@ pub fn gameLoop(settings: *const GameSettings, grid: *Grid, previewGrid: *Grid, 
             }
         }
 
+        sound_checkbox.update();
+        sound_on = sound_checkbox.checked;
+
         // render part
         ray.BeginDrawing();
         defer ray.EndDrawing();
 
         if (game_pause) {
-            ray.DrawText("Pause", @intCast(grid.width/2 * settings.square_size), @intCast(grid.height/2 * settings.square_size), square_size, ray.PINK);
+            ray.DrawText(
+                "Pause",
+                @as(i32, @intCast(grid.width/2)) * block_size,
+                @as(i32, @intCast(grid.height/2)) * block_size,
+                block_size,
+                ray.PINK
+            );
             continue;
         }
         if (!try grid.hasSpaceForPiece(&piece, allocator)) {
-            ray.DrawText("Game Over!", @intCast(grid.width/2 * settings.square_size), @intCast(grid.height/2 * settings.square_size), square_size, ray.PINK);
+            ray.DrawText(
+                "Game Over!",
+                @as(i32, @intCast(grid.width/2)) * block_size,
+                @as(i32, @intCast(grid.height/2)) * block_size,
+                block_size,
+                ray.PINK
+            );
             game_over = true;
             continue;
         }
         ray.ClearBackground(ray.WHITE);
 
-        drawGrid(grid, square_size);
-        drawGrid(previewGrid, square_size);
-        try drawPiece(&piece, grid.position, square_size, allocator);
-        try drawPiece(&nextPiece, previewGrid.position, square_size, allocator);
-        try drawText(score.total, falling.level, tetromino.Position{ .x = @as(i32, @intCast(grid.width)) + 1, .y = 0 }, square_size, allocator);
+        const grid_bounds = layout.getMainGridBounds();
+        drawGrid(grid, grid_bounds, block_size);
+
+        const preview_bounds = layout.getPreviewBounds();
+        drawGrid(previewGrid, preview_bounds, block_size);
+
+        try drawPiece(&piece, grid_bounds, block_size, allocator);
+        try drawPiece(&nextPiece, preview_bounds, block_size, allocator);
+
+        try drawText(&game_state, layout, block_size, allocator);
+
+        sound_checkbox.draw();
     }
 }
 
@@ -490,32 +400,35 @@ pub fn main() !void {
     defer {
         std.debug.assert(gpa.deinit() == .ok);
     }
-    const settings = GameSettings{
-        .square_size = 50,
-        .screen_width = 900,
-        .screen_height = 1200,
+
+    const layout = Layout {
+        .window_width = 800,
+        .window_height = 1200,
+        .margin = 20,
+        .block_size = 40,
         .grid_width = 10,
         .grid_height = 20,
-        .grid_color = ray.SKYBLUE,
-        .preview_grid_color = ray.LIGHTGRAY,
-        .level_increase_lines = 10,
-        .sounds_on = false,
+        .preview_size = 4,
     };
 
-    ray.InitWindow(settings.screen_width, settings.screen_height, "tetris");
-    defer ray.CloseWindow();
-    ray.SetTargetFPS(60);
-
-    var grid = try Grid.init(
+    var grid = try gs.Grid.init(
         allocator,
-        tetromino.Position{ .x = 0, .y = 0 },
-        settings.grid_width,
-        settings.grid_height,
-        settings.grid_color
+        layout.grid_width,
+        layout.grid_height,
+        ray.SKYBLUE,
     );
     defer grid.deinit();
 
-    var previewGrid = try Grid.init(allocator, tetromino.Position{ .x = settings.grid_width + 1, .y = 3 }, 6, 6, settings.preview_grid_color);
+    ray.InitWindow(layout.window_width, layout.window_height, "tetris");
+    defer ray.CloseWindow();
+    ray.SetTargetFPS(60);
+
+    var previewGrid = try gs.Grid.init(
+        allocator,
+        layout.preview_size,
+        layout.preview_size,
+        ray.LIGHTGRAY,
+    );
     defer previewGrid.deinit();
-    try gameLoop(&settings, &grid, &previewGrid, allocator);
+    try gameLoop(&layout, &grid, &previewGrid, allocator);
 }
