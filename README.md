@@ -14,4 +14,5 @@ zig build run
 
 ## Run tests
 ```
-zig
+zig build test
+```
