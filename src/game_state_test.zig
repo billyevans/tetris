@@ -114,22 +114,10 @@ test "Position rotation calculations" {
     const test_pos = tetromino.Position{ .x = 1, .y = 0 };
 
     // Test all rotations of a single position
-    try testing.expectEqual(
-        tetromino.Position{ .x = 1, .y = 0 },
-        tetromino.rotatePosition(test_pos, .up)
-    );
-    try testing.expectEqual(
-        tetromino.Position{ .x = 0, .y = 1 },
-        tetromino.rotatePosition(test_pos, .right)
-    );
-    try testing.expectEqual(
-        tetromino.Position{ .x = -1, .y = 0 },
-        tetromino.rotatePosition(test_pos, .down)
-    );
-    try testing.expectEqual(
-        tetromino.Position{ .x = 0, .y = -1 },
-        tetromino.rotatePosition(test_pos, .left)
-    );
+    try testing.expectEqual(tetromino.Position{ .x = 1, .y = 0 }, tetromino.rotatePosition(test_pos, .up));
+    try testing.expectEqual(tetromino.Position{ .x = 0, .y = 1 }, tetromino.rotatePosition(test_pos, .right));
+    try testing.expectEqual(tetromino.Position{ .x = -1, .y = 0 }, tetromino.rotatePosition(test_pos, .down));
+    try testing.expectEqual(tetromino.Position{ .x = 0, .y = -1 }, tetromino.rotatePosition(test_pos, .left));
 }
 
 test "Tetromino initialization and rotation" {
@@ -156,12 +144,7 @@ test "Grid initialization and basic operations" {
     const allocator = testing.allocator;
     const bg_color = ray.Color{ .r = 0, .g = 0, .b = 0, .a = 255 };
 
-    var grid = try gs.Grid.init(
-        allocator,
-        10,
-        20,
-        bg_color
-    );
+    var grid = try gs.Grid.init(allocator, 10, 20, bg_color);
     defer grid.deinit();
 
     // Test grid dimensions
@@ -181,12 +164,7 @@ test "Line clearing mechanics" {
     const bg_color = ray.Color{ .r = 0, .g = 0, .b = 0, .a = 255 };
     const fill_color = ray.Color{ .r = 255, .g = 255, .b = 255, .a = 255 };
 
-    var grid = try gs.Grid.init(
-        allocator,
-        4,
-        4,
-        bg_color
-    );
+    var grid = try gs.Grid.init(allocator, 4, 4, bg_color);
     defer grid.deinit();
 
     // Fill bottom row
@@ -212,12 +190,7 @@ test "Piece dropping mechanics" {
     const allocator = testing.allocator;
     const bg_color = ray.Color{ .r = 0, .g = 0, .b = 0, .a = 255 };
 
-    var grid = try gs.Grid.init(
-        allocator,
-        10,
-        20,
-        bg_color
-    );
+    var grid = try gs.Grid.init(allocator, 10, 20, bg_color);
     defer grid.deinit();
 
     var piece = tetromino.Tetromino.init(.i, .{ .x = 5, .y = 0 });
@@ -241,12 +214,7 @@ test "Grid piece collision detection" {
     const allocator = testing.allocator;
     const bg_color = ray.Color{ .r = 0, .g = 0, .b = 0, .a = 255 };
 
-    var grid = try gs.Grid.init(
-        allocator,
-        10,
-        20,
-        bg_color
-    );
+    var grid = try gs.Grid.init(allocator, 10, 20, bg_color);
     defer grid.deinit();
 
     // Test piece at valid position
@@ -254,13 +222,13 @@ test "Grid piece collision detection" {
     try testing.expect(try grid.hasSpaceForPiece(&piece, allocator));
 
     // Test piece collision at bottom
-    piece.position.y = 20;  // Bottom edge
+    piece.position.y = 20; // Bottom edge
     try testing.expect(try grid.hasSpaceForPiece(&piece, allocator) == false);
 
     // Test piece collision at walls
-    piece.position = .{ .x = -1, .y = 5 };  // Left wall
+    piece.position = .{ .x = -1, .y = 5 }; // Left wall
     try testing.expect(try grid.hasSpaceForPiece(&piece, allocator) == false);
 
-    piece.position = .{ .x = 9, .y = 5 };  // Right wall
+    piece.position = .{ .x = 9, .y = 5 }; // Right wall
     try testing.expect(try grid.hasSpaceForPiece(&piece, allocator) == false);
 }

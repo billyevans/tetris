@@ -77,19 +77,19 @@ const Layout = struct {
 };
 
 const InputState = struct {
-    move_delay: f32 = 0.10,  // Delay between movements when key is held (in seconds)
-    move_timer: f32 = 0.05,   // Timer for movement delay
+    move_delay: f32 = 0.10, // Delay between movements when key is held (in seconds)
+    move_timer: f32 = 0.05, // Timer for movement delay
 
     // Reset timer
-    pub fn reset_timer(self: *InputState) void {
+    pub fn resetTimer(self: *InputState) void {
         self.move_timer = self.move_delay;
     }
 
     // Update timer and check if we can move
-    pub fn can_move(self: *InputState) bool {
+    pub fn canMove(self: *InputState) bool {
         self.move_timer -= ray.GetFrameTime();
         if (self.move_timer <= 0) {
-            self.reset_timer();
+            self.resetTimer();
             return true;
         }
         return false;
@@ -170,16 +170,16 @@ pub fn handleInput(piece: *tetromino.Tetromino, game_input: *GameInput) Movement
     // Handle initial key presses immediately
     if (ray.IsKeyPressed(ray.KEY_LEFT)) {
         temp_piece.position.x -= 1;
-        game_input.horizontal.reset_timer();
+        game_input.horizontal.resetTimer();
         moved = true;
     } else if (ray.IsKeyPressed(ray.KEY_RIGHT)) {
         temp_piece.position.x += 1;
-        game_input.horizontal.reset_timer();
+        game_input.horizontal.resetTimer();
         moved = true;
     }
 
     // Handle held keys with delay
-    if (!moved and game_input.horizontal.can_move()) {
+    if (!moved and game_input.horizontal.canMove()) {
         if (ray.IsKeyDown(ray.KEY_LEFT)) {
             temp_piece.position.x -= 1;
             moved = true;
@@ -203,7 +203,7 @@ pub fn handleInput(piece: *tetromino.Tetromino, game_input: *GameInput) Movement
     // Quick drop with either continuous drop or instant drop
     if (ray.IsKeyPressed(ray.KEY_SPACE)) {
         dropped = true;
-    } else if (ray.IsKeyDown(ray.KEY_DOWN) and game_input.vertical.can_move()) {
+    } else if (ray.IsKeyDown(ray.KEY_DOWN) and game_input.vertical.canMove()) {
         temp_piece.position.y += 1;
         moved = true;
     }
@@ -224,7 +224,9 @@ pub fn drawText(game_state: *const gs.GameState, layout: *const Layout, text_siz
     {
         const score_pos = layout.getScorePosition();
         const score_string = try std.fmt.allocPrintZ(
-            allocator, "Score: {d}", .{ game_state.score },
+            allocator,
+            "Score: {d}",
+            .{game_state.score},
         );
         defer allocator.free(score_string);
         ray.DrawText(score_string, @intFromFloat(score_pos.x), @intFromFloat(score_pos.y), text_size, ray.DARKGRAY);
@@ -233,7 +235,9 @@ pub fn drawText(game_state: *const gs.GameState, layout: *const Layout, text_siz
     {
         const lines_pos = layout.getLinesPosition();
         const lines_string = try std.fmt.allocPrintZ(
-            allocator, "Lines: {d}", .{ game_state.lines_cleared },
+            allocator,
+            "Lines: {d}",
+            .{game_state.lines_cleared},
         );
         defer allocator.free(lines_string);
         ray.DrawText(lines_string, @intFromFloat(lines_pos.x), @intFromFloat(lines_pos.y), text_size, ray.DARKGRAY);
@@ -242,7 +246,9 @@ pub fn drawText(game_state: *const gs.GameState, layout: *const Layout, text_siz
     {
         const level_pos = layout.getLevelPosition();
         const level_string = try std.fmt.allocPrintZ(
-            allocator, "Level: {d}", .{ game_state.level },
+            allocator,
+            "Level: {d}",
+            .{game_state.level},
         );
         defer allocator.free(level_string);
         ray.DrawText(level_string, @intFromFloat(level_pos.x), @intFromFloat(level_pos.y), text_size, ray.DARKGRAY);
@@ -296,13 +302,7 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, al
     defer ray.CloseAudioDevice();
     const sound = ray.LoadSound("/Users/alexeypervushin/src/zig/tetris/philip.ogg");
     const block_size: i32 = @intFromFloat(layout.block_size);
-    var sound_checkbox = Checkbox.init(
-        layout.getCheckboxBounds().x,
-        layout.getCheckboxBounds().y,
-        20,
-        20,
-        "Sound On"
-    );
+    var sound_checkbox = Checkbox.init(layout.getCheckboxBounds().x, layout.getCheckboxBounds().y, 20, 20, "Sound On");
     var sound_on = sound_checkbox.checked;
 
     while (!ray.WindowShouldClose()) {
@@ -357,23 +357,11 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, al
         defer ray.EndDrawing();
 
         if (game_pause) {
-            ray.DrawText(
-                "Pause",
-                @as(i32, @intCast(grid.width/2)) * block_size,
-                @as(i32, @intCast(grid.height/2)) * block_size,
-                block_size,
-                ray.PINK
-            );
+            ray.DrawText("Pause", @as(i32, @intCast(grid.width / 2)) * block_size, @as(i32, @intCast(grid.height / 2)) * block_size, block_size, ray.PINK);
             continue;
         }
         if (!try grid.hasSpaceForPiece(&piece, allocator)) {
-            ray.DrawText(
-                "Game Over!",
-                @as(i32, @intCast(grid.width/2)) * block_size,
-                @as(i32, @intCast(grid.height/2)) * block_size,
-                block_size,
-                ray.PINK
-            );
+            ray.DrawText("Game Over!", @as(i32, @intCast(grid.width / 2)) * block_size, @as(i32, @intCast(grid.height / 2)) * block_size, block_size, ray.PINK);
             game_over = true;
             continue;
         }
@@ -401,7 +389,7 @@ pub fn main() !void {
         std.debug.assert(gpa.deinit() == .ok);
     }
 
-    const layout = Layout {
+    const layout = Layout{
         .window_width = 800,
         .window_height = 1200,
         .margin = 20,

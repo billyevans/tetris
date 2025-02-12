@@ -32,61 +32,61 @@ pub const Rotation = enum(u2) {
     }
 };
 
-const tetris_colors = struct {
-    cyan: ray.Color = .{ .r = 0, .g = 255, .b = 255, .a = 255 },
-    yellow: ray.Color = .{ .r = 255, .g = 255, .b = 0, .a = 255 },
-    purple: ray.Color = .{ .r = 128, .g = 0, .b = 128, .a = 255 },
-    green: ray.Color = .{ .r = 0, .g = 255, .b = 0, .a = 255 },
-    red: ray.Color = .{ .r = 255, .g = 0, .b = 0, .a = 255 },
-    blue: ray.Color = .{ .r = 0, .g = 0, .b = 255, .a = 255 },
-    orange: ray.Color = .{ .r = 255, .g = 165, .b = 0, .a = 255 },
+const TetrisColors = struct {
+    Cyan: ray.Color = .{ .r = 0, .g = 255, .b = 255, .a = 255 },
+    Yellow: ray.Color = .{ .r = 255, .g = 255, .b = 0, .a = 255 },
+    Purple: ray.Color = .{ .r = 128, .g = 0, .b = 128, .a = 255 },
+    Green: ray.Color = .{ .r = 0, .g = 255, .b = 0, .a = 255 },
+    Red: ray.Color = .{ .r = 255, .g = 0, .b = 0, .a = 255 },
+    Blue: ray.Color = .{ .r = 0, .g = 0, .b = 255, .a = 255 },
+    Orange: ray.Color = .{ .r = 255, .g = 165, .b = 0, .a = 255 },
 }{};
 
-const i_positions = [_]Position{
-    .{ .x = -2, .y = 0 },  // ████
+const I_POSITIONS = [_]Position{
+    .{ .x = -2, .y = 0 }, // ████
     .{ .x = -1, .y = 0 },
     .{ .x = 0, .y = 0 },
     .{ .x = 1, .y = 0 },
 };
 
-const o_positions = [_]Position{
-    .{ .x = -1, .y = 0 },  // ██
-    .{ .x = 0, .y = 0 },   // ██
+const O_POSITIONS = [_]Position{
+    .{ .x = -1, .y = 0 }, // ██
+    .{ .x = 0, .y = 0 }, //  ██
     .{ .x = -1, .y = 1 },
     .{ .x = 0, .y = 1 },
 };
 
-const t_positions = [_]Position{
-    .{ .x = 0, .y = 1 },   //  █
-    .{ .x = -1, .y = 0 },  // ███
+const T_POSITIONS = [_]Position{
+    .{ .x = 0, .y = 1 }, //   █
+    .{ .x = -1, .y = 0 }, // ███
     .{ .x = 0, .y = 0 },
     .{ .x = 1, .y = 0 },
 };
 
-const s_positions = [_]Position{
-    .{ .x = 0, .y = 1 },   //  ██
-    .{ .x = 1, .y = 1 },   // ██
+const S_POSITIONS = [_]Position{
+    .{ .x = 0, .y = 1 }, //   ██
+    .{ .x = 1, .y = 1 }, // ██
     .{ .x = -1, .y = 0 },
     .{ .x = 0, .y = 0 },
 };
 
-const z_positions = [_]Position{
-    .{ .x = -1, .y = 1 },  // ██
-    .{ .x = 0, .y = 1 },   //  ██
+const Z_POSITIONS = [_]Position{
+    .{ .x = -1, .y = 1 }, // ██
+    .{ .x = 0, .y = 1 }, //    ██
     .{ .x = 0, .y = 0 },
     .{ .x = 1, .y = 0 },
 };
 
-const j_positions = [_]Position{
-    .{ .x = -1, .y = 1 },  // █
-    .{ .x = -1, .y = 0 },  // ███
+const J_POSITIONS = [_]Position{
+    .{ .x = -1, .y = 1 }, // █
+    .{ .x = -1, .y = 0 }, // ███
     .{ .x = 0, .y = 0 },
     .{ .x = 1, .y = 0 },
 };
 
-const l_positions = [_]Position{
-    .{ .x = 1, .y = 1 },   //   █
-    .{ .x = -1, .y = 0 },  // ███
+const L_POSITIONS = [_]Position{
+    .{ .x = 1, .y = 1 },  //    █
+    .{ .x = -1, .y = 0 }, // ███
     .{ .x = 0, .y = 0 },
     .{ .x = 1, .y = 0 },
 };
@@ -105,14 +105,14 @@ pub const TetrominoType = enum(u3) {
     }
 };
 
-pub const tetromino_shapes = [_]TetrominoShape{
-    .{ .positions = &i_positions },  // I piece (flat)
-    .{ .positions = &o_positions },  // O piece (2x2 square)
-    .{ .positions = &t_positions },  // T piece (pointing up)
-    .{ .positions = &s_positions },  // S piece (standard S)
-    .{ .positions = &z_positions },  // Z piece (standard Z)
-    .{ .positions = &j_positions },  // J piece (pointing left)
-    .{ .positions = &l_positions },  // L piece (pointing right)
+pub const TETROMINO_SHAPES = [_]TetrominoShape{
+    .{ .positions = &I_POSITIONS }, // I piece (flat)
+    .{ .positions = &O_POSITIONS }, // O piece (2x2 square)
+    .{ .positions = &T_POSITIONS }, // T piece (pointing up)
+    .{ .positions = &S_POSITIONS }, // S piece (standard S)
+    .{ .positions = &Z_POSITIONS }, // Z piece (standard Z)
+    .{ .positions = &J_POSITIONS }, // J piece (pointing left)
+    .{ .positions = &L_POSITIONS }, // L piece (pointing right)
 };
 
 pub fn rotatePosition(pos: Position, rotation: Rotation) Position {
@@ -126,13 +126,13 @@ pub fn rotatePosition(pos: Position, rotation: Rotation) Position {
 
 pub fn getTetrominoColor(tetromino_type: TetrominoType) ray.Color {
     return switch (tetromino_type) {
-        .i => tetris_colors.cyan,
-        .o => tetris_colors.yellow,
-        .t => tetris_colors.purple,
-        .s => tetris_colors.green,
-        .z => tetris_colors.red,
-        .j => tetris_colors.blue,
-        .l => tetris_colors.orange,
+        .i => TetrisColors.Cyan,
+        .o => TetrisColors.Yellow,
+        .t => TetrisColors.Purple,
+        .s => TetrisColors.Green,
+        .z => TetrisColors.Red,
+        .j => TetrisColors.Blue,
+        .l => TetrisColors.Orange,
     };
 }
 
@@ -154,7 +154,7 @@ pub const Tetromino = struct {
     }
 
     pub fn getGridCells(self: *const Tetromino, allocator: std.mem.Allocator) ![]GridCell {
-        const shape = tetromino_shapes[@intFromEnum(self.tetromino_type)];
+        const shape = TETROMINO_SHAPES[@intFromEnum(self.tetromino_type)];
         const color = getTetrominoColor(self.tetromino_type);
 
         // Allocate memory for the cells
