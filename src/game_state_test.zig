@@ -93,14 +93,14 @@ test "Rotation enum operations" {
 
 test "TetrominoType random generation" {
     var prng = std.rand.DefaultPrng.init(42);
-    var rand = prng.random();
+    const rand = prng.random();
 
     // Test multiple random generations to ensure all types can be generated
     var type_counts = [_]usize{0} ** 7;
     const iterations = 1000;
 
     for (0..iterations) |_| {
-        const tetromino_type = tetromino.TetrominoType.random(&rand);
+        const tetromino_type = tetromino.TetrominoType.random(rand);
         type_counts[@intFromEnum(tetromino_type)] += 1;
     }
 
@@ -194,7 +194,7 @@ test "Piece dropping mechanics" {
     defer grid.deinit();
 
     var piece = tetromino.Tetromino.init(.i, .{ .x = 5, .y = 0 });
-    const drop_position = try grid.findDropPosition(&piece, allocator);
+    const drop_position = grid.findDropPosition(&piece);
 
     // The piece should drop to the bottom
     try testing.expectEqual(@as(i32, 5), drop_position.position.x);
@@ -219,16 +219,16 @@ test "Grid piece collision detection" {
 
     // Test piece at valid position
     var piece = tetromino.Tetromino.init(.i, .{ .x = 5, .y = 0 });
-    try testing.expect(try grid.hasSpaceForPiece(&piece, allocator));
+    try testing.expect(grid.hasSpaceForPiece(&piece));
 
     // Test piece collision at bottom
     piece.position.y = 20; // Bottom edge
-    try testing.expect(try grid.hasSpaceForPiece(&piece, allocator) == false);
+    try testing.expect(grid.hasSpaceForPiece(&piece) == false);
 
     // Test piece collision at walls
     piece.position = .{ .x = -1, .y = 5 }; // Left wall
-    try testing.expect(try grid.hasSpaceForPiece(&piece, allocator) == false);
+    try testing.expect(grid.hasSpaceForPiece(&piece) == false);
 
     piece.position = .{ .x = 9, .y = 5 }; // Right wall
-    try testing.expect(try grid.hasSpaceForPiece(&piece, allocator) == false);
+    try testing.expect(grid.hasSpaceForPiece(&piece) == false);
 }

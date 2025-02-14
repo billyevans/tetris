@@ -188,15 +188,13 @@ pub const Grid = struct {
     fn clear(self: *Grid) void {
         for (self.cells) |row| {
             for (row) |*cell| {
-                cell.*.color = self.background_color;
+                cell.* = self.background_color;
             }
         }
     }
 
-    pub fn addPiece(self: *Grid, piece: *const tetromino.Tetromino, allocator: std.mem.Allocator) !void {
-        const cells = try piece.getGridCells(allocator);
-        defer allocator.free(cells);
-
+    pub fn addPiece(self: *Grid, piece: *const tetromino.Tetromino) void {
+        const cells = piece.getGridCells();
         for (cells) |cell| {
             if (self.getCell(cell.position.x, cell.position.y)) |gridCell| {
                 gridCell.* = cell.color;
@@ -213,10 +211,9 @@ pub const Grid = struct {
         return true;
     }
 
-    pub fn hasSpaceForPiece(self: *Grid, piece: *const tetromino.Tetromino, allocator: std.mem.Allocator) !bool {
-        const cells = try piece.getGridCells(allocator);
-        defer allocator.free(cells);
-        return self.hasSpace(cells);
+    pub fn hasSpaceForPiece(self: *Grid, piece: *const tetromino.Tetromino) bool {
+        const cells = piece.getGridCells();
+        return self.hasSpace(&cells);
     }
 
     pub fn isLineComplete(self: *Grid, y: usize) bool {
@@ -261,11 +258,11 @@ pub const Grid = struct {
         return lines_cleared;
     }
 
-    pub fn findDropPosition(self: *Grid, piece: *const tetromino.Tetromino, allocator: std.mem.Allocator) !tetromino.Tetromino {
+    pub fn findDropPosition(self: *Grid, piece: *const tetromino.Tetromino) tetromino.Tetromino {
         var test_piece = piece.*;
         var last_valid = piece.*;
 
-        while (try self.hasSpaceForPiece(&test_piece, allocator)) {
+        while (self.hasSpaceForPiece(&test_piece)) {
             last_valid = test_piece;
             test_piece.position.y += 1;
         }

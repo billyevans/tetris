@@ -100,7 +100,7 @@ pub const TetrominoType = enum(u3) {
     j = 5,
     l = 6,
 
-    pub fn random(rand: *std.Random) TetrominoType {
+    pub fn random(rand: std.Random) TetrominoType {
         return @enumFromInt(rand.intRangeAtMost(u3, 0, 6));
     }
 };
@@ -149,19 +149,16 @@ pub const Tetromino = struct {
         };
     }
 
-    pub fn initRandom(rand: *std.Random, position: Position) Tetromino {
+    pub fn initRandom(rand: std.Random, position: Position) Tetromino {
         return init(TetrominoType.random(rand), position);
     }
 
-    pub fn getGridCells(self: *const Tetromino, allocator: std.mem.Allocator) ![]GridCell {
+    pub fn getGridCells(self: *const Tetromino) [4]GridCell {
         const shape = TETROMINO_SHAPES[@intFromEnum(self.tetromino_type)];
         const color = getTetrominoColor(self.tetromino_type);
 
-        // Allocate memory for the cells
-        var grid_cells = try allocator.alloc(GridCell, shape.positions.len);
-        errdefer allocator.free(grid_cells);
+        var grid_cells: [4]GridCell = undefined;
 
-        // Create each cell with proper position and color
         for (shape.positions, 0..) |pos, i| {
             const rotated = rotatePosition(pos, self.rotation);
             grid_cells[i] = GridCell{
@@ -172,7 +169,6 @@ pub const Tetromino = struct {
                 .color = color,
             };
         }
-
         return grid_cells;
     }
 

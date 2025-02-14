@@ -60,7 +60,7 @@ const Layout = struct {
     }
 
     // Get level text position
-    pub fn getLevelPosition(self: Layout) ray.Vector2 {
+    pub fn getLevelPosition(self: *const Layout) ray.Vector2 {
         return ray.Vector2{
             .x = self.getSidebarX(),
             .y = self.margin + 50,
@@ -68,7 +68,7 @@ const Layout = struct {
     }
 
     // Get lines text position
-    pub fn getLinesPosition(self: Layout) ray.Vector2 {
+    pub fn getLinesPosition(self: *const Layout) ray.Vector2 {
         return ray.Vector2{
             .x = self.getSidebarX(),
             .y = self.margin + 100,
@@ -265,9 +265,8 @@ pub fn drawCell(origin_x: i32, origin_y: i32, x: i32, y: i32, block_size: i32, c
     );
 }
 
-pub fn drawPiece(piece: *const tetromino.Tetromino, grid_bounds: ray.Rectangle, block_size: i32, allocator: std.mem.Allocator) !void {
-    const cells = try piece.getGridCells(allocator);
-    defer allocator.free(cells);
+pub fn drawPiece(piece: *const tetromino.Tetromino, grid_bounds: ray.Rectangle, block_size: i32) void {
+    const cells = piece.getGridCells();
     for (cells) |cell| {
         drawCell(@intFromFloat(grid_bounds.x), @intFromFloat(grid_bounds.y), cell.position.x, cell.position.y, block_size, cell.color);
     }
@@ -285,7 +284,7 @@ pub fn drawGrid(grid: *const gs.Grid, grid_bounds: ray.Rectangle, block_size: i3
 
 pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, allocator: std.mem.Allocator) !void {
     var prng = std.rand.DefaultPrng.init(@intCast(std.time.timestamp()));
-    var rand = prng.random();
+    const rand = prng.random();
     const spawn_pos = tetromino.Position{ .x = @divFloor(@as(i32, @intCast(grid.width)), 2), .y = 0 };
     const next_spawn_pos = tetromino.Position{ .x = @divFloor(@as(i32, @intCast(previewGrid.width)), 2), .y = 1 };
     var game_input = GameInput{
@@ -293,8 +292,8 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, al
         .vertical = .{ .move_delay = 0.05 },
     };
     var falling = gs.FallingState.init(0);
-    var piece = tetromino.Tetromino.initRandom(&rand, spawn_pos);
-    var nextPiece = tetromino.Tetromino.initRandom(&rand, next_spawn_pos);
+    var piece = tetromino.Tetromino.initRandom(rand, spawn_pos);
+    var nextPiece = tetromino.Tetromino.initRandom(rand, next_spawn_pos);
     var game_over = false;
     var game_pause = false;
     var game_state = gs.GameState.init();
@@ -310,12 +309,12 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, al
             // handle input
             const result = handleInput(&piece, &game_input);
             if (result.dropped) {
-                piece = try grid.findDropPosition(&result.piece, allocator);
+                piece = grid.findDropPosition(&result.piece);
                 if (sound_on) {
                     ray.PlaySound(sound);
                 }
             } else if (result.moved) {
-                if (try grid.hasSpaceForPiece(&result.piece, allocator)) {
+                if (grid.hasSpaceForPiece(&result.piece)) {
                     const cells_moved = result.piece.position.y - piece.position.y;
                     piece = result.piece;
 
@@ -334,17 +333,17 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, al
             if (!game_pause and falling.update()) {
                 var fall_piece = piece;
                 fall_piece.position.y += 1;
-                if (try grid.hasSpaceForPiece(&fall_piece, allocator)) {
+                if (grid.hasSpaceForPiece(&fall_piece)) {
                     piece = fall_piece;
                 } else {
-                    try grid.addPiece(&piece, allocator);
+                    grid.addPiece(&piece);
                     const removed = grid.removeCompletedLines();
                     game_state.clearLines(removed);
                     falling.setLevel(game_state.level);
 
                     piece = nextPiece;
                     piece.position = spawn_pos;
-                    nextPiece = tetromino.Tetromino.initRandom(&rand, next_spawn_pos);
+                    nextPiece = tetromino.Tetromino.initRandom(rand, next_spawn_pos);
                 }
             }
         }
@@ -360,7 +359,7 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, al
             ray.DrawText("Pause", @as(i32, @intCast(grid.width / 2)) * block_size, @as(i32, @intCast(grid.height / 2)) * block_size, block_size, ray.PINK);
             continue;
         }
-        if (!try grid.hasSpaceForPiece(&piece, allocator)) {
+        if (!grid.hasSpaceForPiece(&piece)) {
             ray.DrawText("Game Over!", @as(i32, @intCast(grid.width / 2)) * block_size, @as(i32, @intCast(grid.height / 2)) * block_size, block_size, ray.PINK);
             game_over = true;
             continue;
@@ -373,8 +372,8 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, al
         const preview_bounds = layout.getPreviewBounds();
         drawGrid(previewGrid, preview_bounds, block_size);
 
-        try drawPiece(&piece, grid_bounds, block_size, allocator);
-        try drawPiece(&nextPiece, preview_bounds, block_size, allocator);
+        drawPiece(&piece, grid_bounds, block_size);
+        drawPiece(&nextPiece, preview_bounds, block_size);
 
         try drawText(&game_state, layout, block_size, allocator);
 
