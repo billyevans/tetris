@@ -272,6 +272,26 @@ pub fn drawPiece(piece: *const tetromino.Tetromino, grid_bounds: ray.Rectangle, 
     }
 }
 
+pub fn drawGhostPiece(piece: *const tetromino.Tetromino, grid_bounds: ray.Rectangle, block_size: i32) void {
+    const cells = piece.getGridCells();
+
+    for (cells) |cell| {
+        const x = @as(i32, @intFromFloat(grid_bounds.x)) + (cell.position.x * block_size);
+        const y = @as(i32, @intFromFloat(grid_bounds.y)) + (cell.position.y * block_size);
+
+        // Draw a distinctive pattern for ghost pieces - a dotted/dashed outline
+        const dash_size: i32 = 4;
+        var i: i32 = 0;
+        while (i < block_size - 1) : (i += dash_size * 2) {
+            // Draw dashes on all four sides of the block
+            ray.DrawRectangle(x + i, y, dash_size, 1, ray.WHITE);
+            ray.DrawRectangle(x + i, y + block_size - 2, dash_size, 1, ray.WHITE);
+            ray.DrawRectangle(x, y + i, 1, dash_size, ray.WHITE);
+            ray.DrawRectangle(x + block_size - 2, y + i, 1, dash_size, ray.WHITE);
+        }
+    }
+}
+
 pub fn drawGrid(grid: *const gs.Grid, grid_bounds: ray.Rectangle, block_size: i32) void {
     ray.DrawRectangleLinesEx(grid_bounds, 2, ray.BLACK);
     ray.DrawRectangleRec(grid_bounds, ray.BLACK);
@@ -368,6 +388,11 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, al
 
         const grid_bounds = layout.getMainGridBounds();
         drawGrid(grid, grid_bounds, block_size);
+
+        const ghost_piece = grid.findDropPosition(&piece);
+        if (ghost_piece.position.y > piece.position.y) {
+            drawGhostPiece(&ghost_piece, grid_bounds, block_size);
+        }
 
         const preview_bounds = layout.getPreviewBounds();
         drawGrid(previewGrid, preview_bounds, block_size);
