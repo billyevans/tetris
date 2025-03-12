@@ -185,7 +185,7 @@ pub const Grid = struct {
     }
 
     // Clear the grid (set all cells to default color)
-    fn clear(self: *Grid) void {
+    pub fn clear(self: *Grid) void {
         for (self.cells) |row| {
             for (row) |*cell| {
                 cell.* = self.background_color;
