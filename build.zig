@@ -69,15 +69,24 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const main_tests = b.addTest(.{
+    const game_state_tests = b.addTest(.{
         .root_source_file = b.path("src/game_state_test.zig" ),
         .target = target,
         .optimize = optimize,
     });
-    main_tests.root_module.addImport("tetromino", tetromino_module);
-    main_tests.root_module.addImport("game_state", game_state_module);
-    main_tests.linkSystemLibrary("raylib");
+    game_state_tests.root_module.addImport("tetromino", tetromino_module);
+    game_state_tests.root_module.addImport("game_state", game_state_module);
+    game_state_tests.linkSystemLibrary("raylib");
+
+    const tetromino_tests = b.addTest(.{
+        .root_source_file = b.path("src/tetromino_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    tetromino_tests.root_module.addImport("tetromino", tetromino_module);
+    tetromino_tests.root_module.addImport("game_state", game_state_module);
+    tetromino_tests.linkSystemLibrary("raylib");
     const test_step = b.step("test", "Run library tests");
-    const run_tests = b.addRunArtifact(main_tests);
-    test_step.dependOn(&run_tests.step);
+    test_step.dependOn(&b.addRunArtifact(game_state_tests).step);
+    test_step.dependOn(&b.addRunArtifact(tetromino_tests).step);
 }
