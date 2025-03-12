@@ -1,6 +1,6 @@
 # Tetris
 
-![Tetris CI](https://github.com/username/tetris/actions/workflows/ci.yml/badge.svg)
+![Tetris CI](https://github.com/billyevans/tetris/actions/workflows/ci.yml/badge.svg)
 
 Tetris written in Zig, using the raylib library for graphics.
 
@@ -9,7 +9,7 @@ Tetris written in Zig, using the raylib library for graphics.
 ### Prerequisites
 
 This project requires:
-- Zig (0.13.0 or newer)
+- Zig (0.14.0 or newer)
 - raylib
 
 ### Install Dependencies
@@ -22,7 +22,14 @@ brew install raylib
 #### Ubuntu/Debian
 ```bash
 sudo apt-get update
-sudo apt-get install -y libraylib-dev
+sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev libxinerama-dev
+git clone https://github.com/raysan5/raylib.git raylib
+cd raylib
+mkdir build && cd build
+cmake -DBUILD_SHARED_LIBS=ON ..
+make
+sudo make install
+sudo ldconfig
 ```
 
 ## Usage
