@@ -161,7 +161,7 @@ const MovementResult = struct {
     paused: bool,
 };
 
-pub fn handleInput(piece: *tetromino.Tetromino, game_input: *GameInput) MovementResult {
+pub fn handleInput(piece: *tetromino.Tetromino, grid: *gs.Grid, game_input: *GameInput) MovementResult {
     var temp_piece = piece.*;
     var moved = false;
     var dropped = false;
@@ -189,15 +189,21 @@ pub fn handleInput(piece: *tetromino.Tetromino, game_input: *GameInput) Movement
         }
     }
 
-    // Rotation controls (usually don't need hold support)
+    // Rotation controls with wall kicks
     if (ray.IsKeyPressed(ray.KEY_UP) or ray.IsKeyPressed(ray.KEY_Z)) {
-        temp_piece.rotateClockwise();
-        moved = true;
+        var rotated_piece = piece.*;
+        if (rotated_piece.tryRotate(true, grid)) {
+            temp_piece = rotated_piece;
+            moved = true;
+        }
     }
 
     if (ray.IsKeyPressed(ray.KEY_LEFT_CONTROL)) {
-        temp_piece.rotateCounterclockwise();
-        moved = true;
+        var rotated_piece = piece.*;
+        if (rotated_piece.tryRotate(false, grid)) {
+            temp_piece = rotated_piece;
+            moved = true;
+        }
     }
 
     // Quick drop with either continuous drop or instant drop
@@ -327,7 +333,7 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, al
     while (!ray.WindowShouldClose()) {
         if (!game_over) {
             // handle input
-            const result = handleInput(&piece, &game_input);
+            const result = handleInput(&piece, grid, &game_input);
             if (result.dropped) {
                 piece = grid.findDropPosition(&result.piece);
                 if (sound_on) {

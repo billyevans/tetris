@@ -172,6 +172,39 @@ pub const Tetromino = struct {
         return grid_cells;
     }
 
+    pub fn tryRotate(self: *Tetromino, clockwise: bool, grid: anytype) bool {
+        if (self.tetromino_type == .o) return true; // O piece doesn't rotate
+
+        // Save original state to revert if rotation fails
+        const original_rotation = self.rotation;
+        const original_position = self.position;
+
+        // Perform the rotation
+        if (clockwise) {
+            self.rotation = self.rotation.next();
+        } else {
+            self.rotation = self.rotation.previous();
+        }
+
+        // Get the kick data for this rotation transition
+        const kick_data = WallKickData.getKickData(self.tetromino_type, original_rotation);
+
+        // Try each offset in the kick data
+        for (kick_data) |offset| {
+            self.position.x += offset.x;
+            self.position.y += offset.y;
+
+            if (grid.hasSpaceForPiece(self)) {
+                return true;
+            }
+
+            self.position = original_position;
+        }
+
+        self.rotation = original_rotation;
+        return false;
+    }
+
     pub fn rotateClockwise(self: *Tetromino) void {
         if (self.tetromino_type == .o) return;
 
@@ -182,5 +215,45 @@ pub const Tetromino = struct {
         if (self.tetromino_type == .o) return;
 
         self.rotation = self.rotation.previous();
+    }
+};
+
+// SRS (Super Rotation System) wall kick data
+// Format: For each rotation state, list of relative offsets to try
+pub const WallKickData = struct {
+    pub const jlstz_kicks = [4][5]Position{
+        // 0->1 (up->right)
+        [_]Position{ .{ .x = 0, .y = 0 }, .{ .x = -1, .y = 0 }, .{ .x = -1, .y = 1 }, .{ .x = 0, .y = -2 }, .{ .x = -1, .y = -2 } },
+        // 1->2 (right->down)
+        [_]Position{ .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = 1, .y = -1 }, .{ .x = 0, .y = 2 }, .{ .x = 1, .y = 2 } },
+        // 2->3 (down->left)
+        [_]Position{ .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = 1, .y = 1 }, .{ .x = 0, .y = -2 }, .{ .x = 1, .y = -2 } },
+        // 3->0 (left->up)
+        [_]Position{ .{ .x = 0, .y = 0 }, .{ .x = -1, .y = 0 }, .{ .x = -1, .y = -1 }, .{ .x = 0, .y = 2 }, .{ .x = -1, .y = 2 } },
+    };
+
+    pub const i_kicks = [4][5]Position{
+        // 0->1 (up->right)
+        [_]Position{ .{ .x = 0, .y = 0 }, .{ .x = -2, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = -2, .y = -1 }, .{ .x = 1, .y = 2 } },
+        // 1->2 (right->down)
+        [_]Position{ .{ .x = 0, .y = 0 }, .{ .x = -1, .y = 0 }, .{ .x = 2, .y = 0 }, .{ .x = -1, .y = 2 }, .{ .x = 2, .y = -1 } },
+        // 2->3 (down->left)
+        [_]Position{ .{ .x = 0, .y = 0 }, .{ .x = 2, .y = 0 }, .{ .x = -1, .y = 0 }, .{ .x = 2, .y = 1 }, .{ .x = -1, .y = -2 } },
+        // 3->0 (left->up)
+        [_]Position{ .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = -2, .y = 0 }, .{ .x = 1, .y = -2 }, .{ .x = -2, .y = 1 } },
+    };
+
+    pub fn getKickData(tetromino_type: TetrominoType, from_rotation: Rotation) []const Position {
+        const rotation_index = @intFromEnum(from_rotation);
+
+        if (tetromino_type == .i) {
+            return &i_kicks[rotation_index];
+        } else if (tetromino_type == .o) {
+            // O piece doesn't rotate, so just return the first offset (0,0)
+            return i_kicks[0][0..1];
+        } else {
+            // J, L, S, T, Z pieces
+            return &jlstz_kicks[rotation_index];
+        }
     }
 };
