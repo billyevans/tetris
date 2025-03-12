@@ -28,6 +28,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     tetromino_module.linkSystemLibrary("raylib", .{});
+
     const game_state_module = b.addModule("game_state", .{
         .root_source_file = b.path("src/game_state.zig"),
         .target = target,
@@ -36,8 +37,18 @@ pub fn build(b: *std.Build) void {
     game_state_module.linkSystemLibrary("raylib", .{});
     game_state_module.addImport("tetromino", tetromino_module);
 
+    const game_manager_module = b.addModule("game_manager", .{
+        .root_source_file = b.path("src/game_manager.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    game_manager_module.linkSystemLibrary("raylib", .{});
+    game_manager_module.addImport("tetromino", tetromino_module);
+    game_manager_module.addImport("game_state", game_state_module);
+
     exe.root_module.addImport("tetromino", tetromino_module);
     exe.root_module.addImport("game_state", game_state_module);
+    exe.root_module.addImport("game_manager", game_manager_module);
     exe.linkSystemLibrary("raylib");
     exe.linkLibC();
 
@@ -77,6 +88,7 @@ pub fn build(b: *std.Build) void {
     game_state_tests.root_module.addImport("tetromino", tetromino_module);
     game_state_tests.root_module.addImport("game_state", game_state_module);
     game_state_tests.linkSystemLibrary("raylib");
+    game_state_tests.linkLibC();
 
     const tetromino_tests = b.addTest(.{
         .root_source_file = b.path("src/tetromino_test.zig"),
@@ -86,7 +98,22 @@ pub fn build(b: *std.Build) void {
     tetromino_tests.root_module.addImport("tetromino", tetromino_module);
     tetromino_tests.root_module.addImport("game_state", game_state_module);
     tetromino_tests.linkSystemLibrary("raylib");
+    tetromino_tests.linkLibC();
+
+    // Create tests for the game manager
+    const game_manager_tests = b.addTest(.{
+        .root_source_file = b.path("src/game_manager_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    game_manager_tests.root_module.addImport("tetromino", tetromino_module);
+    game_manager_tests.root_module.addImport("game_state", game_state_module);
+    game_manager_tests.root_module.addImport("game_manager", game_manager_module);
+    game_manager_tests.linkSystemLibrary("raylib");
+    game_manager_tests.linkLibC();
+
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&b.addRunArtifact(game_state_tests).step);
     test_step.dependOn(&b.addRunArtifact(tetromino_tests).step);
+    test_step.dependOn(&b.addRunArtifact(game_manager_tests).step);
 }
