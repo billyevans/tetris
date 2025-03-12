@@ -4,6 +4,7 @@ const ray = @cImport({
 });
 const tetromino = @import("tetromino");
 const gs = @import("game_state");
+const gm = @import("game_manager");
 
 const Layout = struct {
     window_width: f32,
@@ -76,31 +77,6 @@ const Layout = struct {
     }
 };
 
-const InputState = struct {
-    move_delay: f32 = 0.10, // Delay between movements when key is held (in seconds)
-    move_timer: f32 = 0.05, // Timer for movement delay
-
-    // Reset timer
-    pub fn resetTimer(self: *InputState) void {
-        self.move_timer = self.move_delay;
-    }
-
-    // Update timer and check if we can move
-    pub fn canMove(self: *InputState) bool {
-        self.move_timer -= ray.GetFrameTime();
-        if (self.move_timer <= 0) {
-            self.resetTimer();
-            return true;
-        }
-        return false;
-    }
-};
-
-const GameInput = struct {
-    horizontal: InputState,
-    vertical: InputState,
-};
-
 const Checkbox = struct {
     bounds: ray.Rectangle,
     checked: bool,
@@ -154,129 +130,47 @@ const Checkbox = struct {
     }
 };
 
-const SoundManager = struct {
-    drop_sound: ray.Sound,
-    move_sound: ray.Sound,
-    rotate_sound: ray.Sound,
-    line_clear_sound: ray.Sound,
-    level_up_sound: ray.Sound,
-    enabled: bool,
-
-    pub fn init(sound_files: struct {
-        drop: [:0]const u8,
-        move: [:0]const u8,
-        rotate: [:0]const u8,
-        line_clear: [:0]const u8,
-        level_up: [:0]const u8,
-    }) SoundManager {
-        return SoundManager{
-            .drop_sound = ray.LoadSound(sound_files.drop),
-            .move_sound = ray.LoadSound(sound_files.move),
-            .rotate_sound = ray.LoadSound(sound_files.rotate),
-            .line_clear_sound = ray.LoadSound(sound_files.line_clear),
-            .level_up_sound = ray.LoadSound(sound_files.level_up),
-            .enabled = true,
-        };
-    }
-
-    pub fn deinit(self: *SoundManager) void {
-        ray.UnloadSound(self.drop_sound);
-        ray.UnloadSound(self.move_sound);
-        ray.UnloadSound(self.rotate_sound);
-        ray.UnloadSound(self.line_clear_sound);
-        ray.UnloadSound(self.level_up_sound);
-    }
-
-    pub fn play(self: *SoundManager, sound_type: enum { drop, move, rotate, line_clear, level_up }) void {
-        if (!self.enabled) return;
-
-        switch (sound_type) {
-            .drop => ray.PlaySound(self.drop_sound),
-            .move => ray.PlaySound(self.move_sound),
-            .rotate => ray.PlaySound(self.rotate_sound),
-            .line_clear => ray.PlaySound(self.line_clear_sound),
-            .level_up => ray.PlaySound(self.level_up_sound),
-        }
-    }
-
-    pub fn setEnabled(self: *SoundManager, enabled: bool) void {
-        self.enabled = enabled;
-    }
-};
-
-const MovementResult = struct {
-    piece: tetromino.Tetromino,
-    moved: bool,
-    dropped: bool,
-    paused: bool,
-};
-
-pub fn handleInput(piece: *tetromino.Tetromino, grid: *gs.Grid, game_input: *GameInput) MovementResult {
-    var temp_piece = piece.*;
-    var moved = false;
-    var dropped = false;
-    var paused = false;
-
-    // Handle initial key presses immediately
+pub fn handleInput(game: *gm.GameManager) void {
+    // First handle key presses
     if (ray.IsKeyPressed(ray.KEY_LEFT)) {
-        temp_piece.position.x -= 1;
-        game_input.horizontal.resetTimer();
-        moved = true;
+        _ = game.processInput(.move_left);
     } else if (ray.IsKeyPressed(ray.KEY_RIGHT)) {
-        temp_piece.position.x += 1;
-        game_input.horizontal.resetTimer();
-        moved = true;
+        _ = game.processInput(.move_right);
     }
 
     // Handle held keys with delay
-    if (!moved and game_input.horizontal.canMove()) {
+    if (game.canMovePiece(.horizontal)) {
         if (ray.IsKeyDown(ray.KEY_LEFT)) {
-            temp_piece.position.x -= 1;
-            moved = true;
+            _ = game.processInput(.move_left);
         } else if (ray.IsKeyDown(ray.KEY_RIGHT)) {
-            temp_piece.position.x += 1;
-            moved = true;
+            _ = game.processInput(.move_right);
         }
     }
 
-    // Rotation controls with wall kicks
+    // Rotation controls
     if (ray.IsKeyPressed(ray.KEY_UP) or ray.IsKeyPressed(ray.KEY_Z)) {
-        var rotated_piece = piece.*;
-        if (rotated_piece.tryRotate(true, grid)) {
-            temp_piece = rotated_piece;
-            moved = true;
-        }
+        _ = game.processInput(.rotate_clockwise);
     }
 
     if (ray.IsKeyPressed(ray.KEY_LEFT_CONTROL)) {
-        var rotated_piece = piece.*;
-        if (rotated_piece.tryRotate(false, grid)) {
-            temp_piece = rotated_piece;
-            moved = true;
-        }
+        _ = game.processInput(.rotate_counterclockwise);
     }
 
-    // Quick drop with either continuous drop or instant drop
+    // Quick drop
     if (ray.IsKeyPressed(ray.KEY_SPACE)) {
-        dropped = true;
-        // Add a short input freeze after hard drop
-        game_input.horizontal.move_timer = 0.2;
-        game_input.vertical.move_timer = 0.2;
-    } else if (ray.IsKeyDown(ray.KEY_DOWN) and game_input.vertical.canMove()) {
-        temp_piece.position.y += 1;
-        moved = true;
+        _ = game.processInput(.hard_drop);
+    } else if (ray.IsKeyDown(ray.KEY_DOWN) and game.canMovePiece(.vertical)) {
+        _ = game.processInput(.soft_drop);
     }
 
+    // Game control
     if (ray.IsKeyPressed(ray.KEY_F10)) {
-        paused = true;
+        _ = game.processInput(.toggle_pause);
     }
 
-    return .{
-        .piece = temp_piece,
-        .moved = moved,
-        .dropped = dropped,
-        .paused = paused,
-    };
+    if (ray.IsKeyPressed(ray.KEY_ENTER)) {
+        _ = game.processInput(.restart);
+    }
 }
 
 pub fn drawText(game_state: *const gs.GameState, layout: *const Layout, text_size: i32, allocator: std.mem.Allocator) !void {
@@ -361,117 +255,63 @@ pub fn drawGrid(grid: *const gs.Grid, grid_bounds: ray.Rectangle, block_size: i3
     }
 }
 
-pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, preview_grid: *gs.Grid, sound_manager: *SoundManager, allocator: std.mem.Allocator) !void {
+pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, preview_grid: *gs.Grid, sound_files: gm.SoundFiles, allocator: std.mem.Allocator) !void {
     var prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
     const rand = prng.random();
-    const spawn_pos = tetromino.Position{ .x = @divFloor(@as(i32, @intCast(grid.width)), 2), .y = 0 };
-    const next_spawn_pos = tetromino.Position{ .x = @divFloor(@as(i32, @intCast(preview_grid.width)), 2), .y = 1 };
-    var game_input = GameInput{
-        .horizontal = .{ .move_delay = 0.10 },
-        .vertical = .{ .move_delay = 0.05 },
-    };
-    var falling = gs.FallingState.init(0);
-    var piece = tetromino.Tetromino.initRandom(rand, spawn_pos);
-    var next_piece = tetromino.Tetromino.initRandom(rand, next_spawn_pos);
-    var game_over = false;
-    var game_pause = false;
-    var game_state = gs.GameState.init();
-    var ghost_piece: ?tetromino.Tetromino = null;
+
+    // Set up the game manager
+    var game = gm.GameManager.init(grid, preview_grid, rand, sound_files);
+    defer game.deinit(); // Make sure to clean up sounds
+
+    // Other UI elements
     const block_size: i32 = @intFromFloat(layout.block_size);
     var sound_checkbox = Checkbox.init(layout.getCheckboxBounds().x, layout.getCheckboxBounds().y, 20, 20, "Sound On");
 
     while (!ray.WindowShouldClose()) {
-        // Check for restart on game over
-        if (game_over and ray.IsKeyPressed(ray.KEY_ENTER)) {
-            grid.clear();
-            game_state = gs.GameState.init();
-            falling = gs.FallingState.init(0);
-            piece = tetromino.Tetromino.initRandom(rand, spawn_pos);
-            next_piece = tetromino.Tetromino.initRandom(rand, next_spawn_pos);
-            game_over = false;
-        }
+        // Update game state
+        game.update();
 
-        if (!game_over) {
-            // handle input
-            const result = handleInput(&piece, grid, &game_input);
-            if (result.dropped) {
-                ghost_piece = null;
-                piece = grid.findDropPosition(&result.piece);
-                sound_manager.play(.drop);
-            } else if (result.moved) {
-                ghost_piece = null;
-                if (grid.hasSpaceForPiece(&result.piece)) {
-                    const cells_moved = result.piece.position.y - piece.position.y;
-                    piece = result.piece;
+        // Handle input
+        handleInput(&game);
 
-                    if (cells_moved > 0) {
-                        game_state.addSoftDrop(@intCast(cells_moved));
-                    }
-                    sound_manager.play(.move);
-                }
-            } else if (result.paused) {
-                game_pause = !game_pause;
-            }
+        // Update ghost piece for rendering
+        game.updateGhostPiece();
 
-            // handle falling
-            if (!game_pause and falling.update()) {
-                var fall_piece = piece;
-                fall_piece.position.y += 1;
-                if (grid.hasSpaceForPiece(&fall_piece)) {
-                    piece = fall_piece;
-                } else {
-                    grid.addPiece(&piece);
-                    const removed = grid.removeCompletedLines();
-                    game_state.clearLines(removed);
-                    falling.setLevel(game_state.level);
-
-                    if (removed > 0) {
-                        sound_manager.play(.line_clear);
-                    }
-
-                    piece = next_piece;
-                    piece.position = spawn_pos;
-                    ghost_piece = null;
-                    next_piece = tetromino.Tetromino.initRandom(rand, next_spawn_pos);
-                }
-            }
-        }
-
+        // Update UI
         sound_checkbox.update();
-        sound_manager.setEnabled(sound_checkbox.checked);
-        // render part
+        game.setSoundEnabled(sound_checkbox.checked);
+
+        // Render part
         ray.BeginDrawing();
         defer ray.EndDrawing();
 
-        if (game_pause) {
-            ray.DrawText("Pause", @as(i32, @intCast(grid.width / 2)) * block_size, @as(i32, @intCast(grid.height / 2)) * block_size, block_size, ray.PINK);
-            continue;
-        }
-        if (!grid.hasSpaceForPiece(&piece)) {
-            ray.DrawText("Game Over!", @as(i32, @intCast(grid.width / 2)) * block_size, @as(i32, @intCast(grid.height / 2)) * block_size, block_size, ray.PINK);
-            game_over = true;
-            continue;
-        }
         ray.ClearBackground(ray.WHITE);
 
         const grid_bounds = layout.getMainGridBounds();
         drawGrid(grid, grid_bounds, block_size);
 
-        if (ghost_piece == null) {
-            ghost_piece = grid.findDropPosition(&piece);
-        }
-        const ghost_piece_unwrapped = ghost_piece.?;
-        if (ghost_piece_unwrapped.position.y > piece.position.y) {
-            drawGhostPiece(&ghost_piece_unwrapped, grid_bounds, block_size);
+        // Draw game state based on status
+        if (game.status == .paused) {
+            ray.DrawText("Pause", @as(i32, @intCast(grid.width / 2)) * block_size, @as(i32, @intCast(grid.height / 2)) * block_size, block_size, ray.PINK);
+        } else if (game.status == .game_over) {
+            ray.DrawText("Game Over!", @as(i32, @intCast(grid.width / 2)) * block_size, @as(i32, @intCast(grid.height / 2)) * block_size, block_size, ray.PINK);
+        } else {
+            // Only render game when playing
+            if (game.ghost_piece) |ghost| {
+                if (ghost.position.y > game.current_piece.position.y) {
+                    drawGhostPiece(&ghost, grid_bounds, block_size);
+                }
+            }
+
+            drawPiece(&game.current_piece, grid_bounds, block_size);
         }
 
+        // Always draw these UI elements
         const preview_bounds = layout.getPreviewBounds();
         drawGrid(preview_grid, preview_bounds, block_size);
+        drawPiece(&game.next_piece, preview_bounds, block_size);
 
-        drawPiece(&piece, grid_bounds, block_size);
-        drawPiece(&next_piece, preview_bounds, block_size);
-
-        try drawText(&game_state, layout, block_size, allocator);
+        try drawText(&game.game_state, layout, block_size, allocator);
 
         sound_checkbox.draw();
     }
@@ -516,14 +356,14 @@ pub fn main() !void {
 
     ray.InitAudioDevice();
     defer ray.CloseAudioDevice();
-    var sound_manager = SoundManager.init(.{
+
+    const sound_files = gm.SoundFiles{
         .drop = "philip.ogg",
         .move = "philip.ogg",
         .rotate = "philip.ogg",
         .line_clear = "philip.ogg",
         .level_up = "philip.ogg",
-    });
-    defer sound_manager.deinit();
+    };
 
-    try gameLoop(&layout, &grid, &preview_grid, &sound_manager, allocator);
+    try gameLoop(&layout, &grid, &preview_grid, sound_files, allocator);
 }
