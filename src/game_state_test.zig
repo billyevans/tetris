@@ -92,7 +92,7 @@ test "Rotation enum operations" {
 }
 
 test "TetrominoType random generation" {
-    var prng = std.rand.DefaultPrng.init(42);
+    var prng = std.Random.DefaultPrng.init(42);
     const rand = prng.random();
 
     // Test multiple random generations to ensure all types can be generated

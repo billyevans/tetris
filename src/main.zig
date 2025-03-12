@@ -309,7 +309,7 @@ pub fn drawGrid(grid: *const gs.Grid, grid_bounds: ray.Rectangle, block_size: i3
 }
 
 pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, previewGrid: *gs.Grid, allocator: std.mem.Allocator) !void {
-    var prng = std.rand.DefaultPrng.init(@intCast(std.time.timestamp()));
+    var prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
     const rand = prng.random();
     const spawn_pos = tetromino.Position{ .x = @divFloor(@as(i32, @intCast(grid.width)), 2), .y = 0 };
     const next_spawn_pos = tetromino.Position{ .x = @divFloor(@as(i32, @intCast(previewGrid.width)), 2), .y = 1 };
