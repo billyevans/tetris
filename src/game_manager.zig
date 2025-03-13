@@ -4,11 +4,13 @@ const ray = @cImport({
 });
 const tetromino = @import("tetromino");
 const gs = @import("game_state");
+const rm = @import("records_manager");
 
 pub const GameStatus = enum {
     playing,
     paused,
     game_over,
+    high_score,
 };
 
 pub const InputEvent = enum {
@@ -19,6 +21,7 @@ pub const InputEvent = enum {
     soft_drop,
     hard_drop,
     toggle_pause,
+    toggle_records,
     restart,
     none,
 };
@@ -121,14 +124,18 @@ pub const GameManager = struct {
 
     rand: std.Random,
 
-    // Sound management
     sound_manager: SoundManager,
+
+    records_manager: ?*rm.RecordsManager,
+    achieved_high_score: bool,
+    was_previously_paused: bool,
 
     pub fn init(
         grid: *gs.Grid,
         preview_grid: *gs.Grid,
         rand: std.Random,
-        sound_files: ?SoundFiles
+        sound_files: ?SoundFiles,
+        records_manager: ?*rm.RecordsManager,
     ) GameManager {
         const spawn_pos = tetromino.Position{
             .x = @divFloor(@as(i32, @intCast(grid.width)), 2),
@@ -159,6 +166,9 @@ pub const GameManager = struct {
             .vertical_move_timer = 0.05,
             .rand = rand,
             .sound_manager = sound_manager,
+            .records_manager = records_manager,
+            .achieved_high_score = false,
+            .was_previously_paused = false,
         };
     }
 
@@ -214,8 +224,35 @@ pub const GameManager = struct {
         self.ghost_piece = null;
 
         if (!self.grid.hasSpaceForPiece(&self.current_piece)) {
+            self.checkHighScore();
+        }
+    }
+    fn checkHighScore(self: *GameManager) void {
+        if (self.records_manager) |records| {
+            if (records.isHighScore(@intCast(self.game_state.score))) {
+                self.status = .high_score;
+                self.achieved_high_score = true;
+            } else {
+                self.status = .game_over;
+            }
+        } else {
             self.status = .game_over;
         }
+    }
+
+    pub fn submitHighScore(self: *GameManager, name: []const u8) !void {
+        if (self.records_manager) |records| {
+            if (self.achieved_high_score) {
+                _ = try records.insertScore(
+                    name,
+                    @intCast(self.game_state.score),
+                    @intCast(self.game_state.level),
+                    @intCast(self.game_state.lines_cleared)
+                );
+            }
+        }
+        self.status = .game_over;
+        self.achieved_high_score = false;
     }
 
     pub fn restart(self: *GameManager) void {
@@ -242,7 +279,27 @@ pub const GameManager = struct {
         if (self.status == .playing) {
             self.status = .paused;
         } else if (self.status == .paused) {
-            self.status = .playing;
+            // Only unpause if records are not being shown
+            if (self.records_manager == null or !self.records_manager.?.show_records) {
+                self.status = .playing;
+            }
+        }
+    }
+
+    pub fn toggleRecords(self: *GameManager) void {
+        if (self.records_manager) |records| {
+            records.toggleRecordsDisplay();
+            if (records.show_records) {
+                self.was_previously_paused = (self.status == .paused);
+
+                if (self.status == .playing) {
+                    self.status = .paused;
+                }
+            } else {
+                if (!self.was_previously_paused and self.status == .paused) {
+                    self.status = .playing;
+                }
+            }
         }
     }
 
@@ -343,6 +400,10 @@ pub const GameManager = struct {
                         self.togglePause();
                         result.state_changed = true;
                     },
+                    .toggle_records => {
+                        self.toggleRecords();
+                        result.state_changed = true;
+                    },
                     .restart => {},
                     .none => {},
                 }
@@ -351,13 +412,22 @@ pub const GameManager = struct {
                 if (event == .toggle_pause) {
                     self.togglePause();
                     result.state_changed = true;
+                } else if (event == .toggle_records) {
+                    self.toggleRecords();
+                    result.state_changed = true;
                 }
             },
             .game_over => {
                 if (event == .restart) {
                     self.restart();
                     result.state_changed = true;
+                } else if (event == .toggle_records) {
+                    self.toggleRecords();
+                    result.state_changed = true;
                 }
+            },
+            .high_score => {
+                // just wait for name input
             },
         }
 

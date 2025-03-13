@@ -5,6 +5,7 @@ const ray = @cImport({
 const tetromino = @import("tetromino");
 const gs = @import("game_state");
 const gm = @import("game_manager");
+const rm = @import("records_manager");
 
 const Layout = struct {
     window_width: f32,
@@ -171,6 +172,10 @@ pub fn handleInput(game: *gm.GameManager) void {
     if (ray.IsKeyPressed(ray.KEY_ENTER)) {
         _ = game.processInput(.restart);
     }
+
+    if (ray.IsKeyPressed(ray.KEY_H)) {
+        _ = game.processInput(.toggle_records);
+    }
 }
 
 pub fn drawText(game_state: *const gs.GameState, layout: *const Layout, text_size: i32, allocator: std.mem.Allocator) !void {
@@ -259,22 +264,53 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, preview_grid: *gs.Grid, s
     var prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
     const rand = prng.random();
 
-    // Set up the game manager
-    var game = gm.GameManager.init(grid, preview_grid, rand, sound_files);
+    var records_manager = try rm.RecordsManager.init(allocator, "tetris_records.dat", "Player");
+    defer records_manager.deinit();
+
+    var game = gm.GameManager.init(grid, preview_grid, rand, sound_files, &records_manager);
     defer game.deinit(); // Make sure to clean up sounds
 
     // Other UI elements
     const block_size: i32 = @intFromFloat(layout.block_size);
     var sound_checkbox = Checkbox.init(layout.getCheckboxBounds().x, layout.getCheckboxBounds().y, 20, 20, "Sound On");
 
+    var name_buffer: [16:0]u8 = [_:0]u8{0} ** 16;
+    @memcpy(name_buffer[0..@min(records_manager.default_name.len, 15)], records_manager.default_name[0..@min(records_manager.default_name.len, 15)]);
+    var name_length: usize = records_manager.default_name.len;
+
     while (!ray.WindowShouldClose()) {
-        // Update game state
         game.update();
 
-        // Handle input
-        handleInput(&game);
+        if (game.status != .high_score) {
+            handleInput(&game);
+        } else {
+            // Handle high score name input
+            const key = ray.GetCharPressed();
+            if (key > 0 and name_length < 15 and
+                ((key >= 'a' and key <= 'z') or
+                    (key >= 'A' and key <= 'Z') or
+                    (key >= '0' and key <= '9') or
+                    key == '_' or key == '-' or key == ' ')) {
 
-        // Update ghost piece for rendering
+                        name_buffer[name_length] = @truncate(@as(usize, @intCast(key)));
+                        name_length += 1;
+                        name_buffer[name_length] = 0; // Null terminate
+                    }
+
+            if (ray.IsKeyPressed(ray.KEY_BACKSPACE) and name_length > 0) {
+                name_length -= 1;
+                name_buffer[name_length] = 0;
+            }
+
+            if (ray.IsKeyPressed(ray.KEY_ENTER) and name_length > 0) {
+                try game.submitHighScore(name_buffer[0..name_length]);
+
+                // Reset name for next time
+                name_length = records_manager.default_name.len;
+                @memcpy(name_buffer[0..@min(records_manager.default_name.len, 15)], records_manager.default_name[0..@min(records_manager.default_name.len, 15)]);
+            }
+        }
+
         game.updateGhostPiece();
 
         // Update UI
@@ -294,6 +330,40 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, preview_grid: *gs.Grid, s
         if (game.status == .paused) {
             ray.DrawText("Pause", @as(i32, @intCast(grid.width / 2)) * block_size, @as(i32, @intCast(grid.height / 2)) * block_size, block_size, ray.PINK);
         } else if (game.status == .game_over) {
+            ray.DrawText("Game Over!", @intFromFloat(grid_bounds.x + grid_bounds.width / 2 - 120),
+                @intFromFloat(grid_bounds.y + grid_bounds.height / 2 - 40), 40, ray.PINK);
+            ray.DrawText("Press Enter to restart", @intFromFloat(grid_bounds.x + grid_bounds.width / 2 - 150),
+                @intFromFloat(grid_bounds.y + grid_bounds.height / 2 + 20), 24, ray.PINK);
+            ray.DrawText("Press H to view high scores", @intFromFloat(grid_bounds.x + grid_bounds.width / 2 - 150),
+                @intFromFloat(grid_bounds.y + grid_bounds.height / 2 + 50), 24, ray.PINK);
+        } else if (game.status == .high_score) {
+            const highscore_panel = ray.Rectangle{
+                .x = grid_bounds.x + 20,
+                .y = grid_bounds.y + grid_bounds.height / 4 - 80,
+                .width = grid_bounds.width - 40,
+                .height = 240,
+            };
+            ray.DrawRectangleRec(highscore_panel, ray.ColorAlpha(ray.BLACK, 0.8));
+
+            ray.DrawText("NEW HIGH SCORE!", @intFromFloat(grid_bounds.x + grid_bounds.width / 2 - 150),
+                @intFromFloat(grid_bounds.y + grid_bounds.height / 4 - 60), 34, ray.GOLD);
+            ray.DrawText("Enter your name:", @intFromFloat(grid_bounds.x + grid_bounds.width / 2 - 100),
+                @intFromFloat(grid_bounds.y + grid_bounds.height / 4), 24, ray.WHITE);
+
+            const name_panel = ray.Rectangle{
+                .x = grid_bounds.x + grid_bounds.width / 2 - 150,
+                .y = grid_bounds.y + grid_bounds.height / 4 + 40,
+                .width = 300,
+                .height = 40,
+            };
+
+            ray.DrawRectangleRec(name_panel, ray.LIGHTGRAY);
+            ray.DrawRectangleLinesEx(name_panel, 2, ray.GRAY);
+            ray.DrawText(&name_buffer, @intFromFloat(name_panel.x + 10),
+                @intFromFloat(name_panel.y + 10), 24, ray.BLACK);
+
+            ray.DrawText("Press Enter to confirm", @intFromFloat(grid_bounds.x + grid_bounds.width / 2 - 140),
+                @intFromFloat(grid_bounds.y + grid_bounds.height / 4 + 100), 24, ray.WHITE);
             ray.DrawText("Game Over!", @as(i32, @intCast(grid.width / 2)) * block_size, @as(i32, @intCast(grid.height / 2)) * block_size, block_size, ray.PINK);
         } else {
             // Only render game when playing
@@ -314,6 +384,23 @@ pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, preview_grid: *gs.Grid, s
         try drawText(&game.game_state, layout, block_size, allocator);
 
         sound_checkbox.draw();
+        // If records should be displayed
+        if (records_manager.show_records) {
+            const records_bounds = ray.Rectangle{
+                .x = layout.window_width * 0.1,
+                .y = layout.window_height * 0.1,
+                .width = layout.window_width * 0.8,
+                .height = layout.window_height * 0.8,
+            };
+
+            try records_manager.drawRecords(
+                records_bounds.x,
+                records_bounds.y,
+                records_bounds.width,
+                records_bounds.height,
+                40, 20
+            );
+        }
     }
 }
 
@@ -342,7 +429,7 @@ pub fn main() !void {
     );
     defer grid.deinit();
 
-    ray.InitWindow(layout.window_width, layout.window_height, "tetris");
+    ray.InitWindow(layout.window_width, layout.window_height, "Tetris");
     defer ray.CloseWindow();
     ray.SetTargetFPS(60);
 
