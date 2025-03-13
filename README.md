@@ -9,7 +9,7 @@ Tetris written in Zig, using the raylib library for graphics.
 ### Prerequisites
 
 This project requires:
-- Zig (0.14.0 or newer)
+- Zig (0.13.0 or newer)
 - raylib
 
 ### Install Dependencies
