@@ -11,12 +11,29 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        zig-version: [0.13.0]
+        zig-version: [0.14.1]
         target-arch: [native, aarch64]
       fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache Zig
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/zig
+            ~/.zig
+          key: ${{ runner.os }}-zig-${{ matrix.zig-version }}-${{ hashFiles('build.zig.zon') }}
+          restore-keys: |
+            ${{ runner.os }}-zig-${{ matrix.zig-version }}-
+
+      - name: Cache raylib
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/libraylib*
+          key: ${{ runner.os }}-raylib-${{ hashFiles('.github/workflows/ci.yml') }}
 
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2

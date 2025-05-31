@@ -122,7 +122,7 @@ pub const GameManager = struct {
     vertical_move_delay: f32,
     vertical_move_timer: f32,
 
-    rand: std.Random,
+    prng: std.Random.DefaultPrng,
 
     sound_manager: SoundManager,
 
@@ -133,10 +133,12 @@ pub const GameManager = struct {
     pub fn init(
         grid: *gs.Grid,
         preview_grid: *gs.Grid,
-        rand: std.Random,
+        seed: u64,
         sound_files: ?SoundFiles,
         records_manager: ?*rm.RecordsManager,
     ) GameManager {
+        var prng = std.Random.DefaultPrng.init(seed);
+        const rand = prng.random();
         const spawn_pos = tetromino.Position{
             .x = @divFloor(@as(i32, @intCast(grid.width)), 2),
             .y = 0
@@ -164,7 +166,7 @@ pub const GameManager = struct {
             .horizontal_move_timer = 0.05,
             .vertical_move_delay = 0.05,
             .vertical_move_timer = 0.05,
-            .rand = rand,
+            .prng = prng,
             .sound_manager = sound_manager,
             .records_manager = records_manager,
             .achieved_high_score = false,
@@ -219,7 +221,7 @@ pub const GameManager = struct {
             .x = @divFloor(@as(i32, @intCast(self.preview_grid.width)), 2),
             .y = 1
         };
-        self.next_piece = tetromino.Tetromino.initRandom(self.rand, next_spawn_pos);
+        self.next_piece = tetromino.Tetromino.initRandom(self.prng.random(), next_spawn_pos);
 
         self.ghost_piece = null;
 
@@ -268,9 +270,9 @@ pub const GameManager = struct {
             .x = @divFloor(@as(i32, @intCast(self.preview_grid.width)), 2),
             .y = 1
         };
-
-        self.current_piece = tetromino.Tetromino.initRandom(self.rand, spawn_pos);
-        self.next_piece = tetromino.Tetromino.initRandom(self.rand, next_spawn_pos);
+        const rand = self.prng.random();
+        self.current_piece = tetromino.Tetromino.initRandom(rand, spawn_pos);
+        self.next_piece = tetromino.Tetromino.initRandom(rand, next_spawn_pos);
         self.ghost_piece = null;
         self.status = .playing;
     }
