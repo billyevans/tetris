@@ -23,10 +23,7 @@ pub fn createTestableGameManager(allocator: std.mem.Allocator) !struct {
     errdefer allocator.destroy(preview_grid);
     preview_grid.* = try gs.Grid.init(allocator, 4, 4, bg_color);
 
-    var prng = std.Random.DefaultPrng.init(42);
-    const rand = prng.random();
-
-    const game = gm.GameManager.init(main_grid, preview_grid, rand, null, null);
+    const game = gm.GameManager.init(main_grid, preview_grid, 42, null, null);
 
     return .{
         .game = game,

@@ -261,13 +261,10 @@ pub fn drawGrid(grid: *const gs.Grid, grid_bounds: ray.Rectangle, block_size: i3
 }
 
 pub fn gameLoop(layout: *const Layout, grid: *gs.Grid, preview_grid: *gs.Grid, sound_files: gm.SoundFiles, allocator: std.mem.Allocator) !void {
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
-    const rand = prng.random();
-
     var records_manager = try rm.RecordsManager.init(allocator, "tetris_records.dat", "Player");
     defer records_manager.deinit();
 
-    var game = gm.GameManager.init(grid, preview_grid, rand, sound_files, &records_manager);
+    var game = gm.GameManager.init(grid, preview_grid, @intCast(std.time.timestamp()), sound_files, &records_manager);
     defer game.deinit(); // Make sure to clean up sounds
 
     // Other UI elements
